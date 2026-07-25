@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>飲みメモ</title>
+<style>
+  :root{
+    --bg: #f7f0e3;
+    --bg-card: #fffdf7;
+    --border: #e6d9bd;
+    --border-strong: #d8c69f;
+    --text-dark: #4a3c28;
+    --text-muted: #948363;
+    --accent: #c1594a;
+    --accent-soft: #f3ddd6;
+    --accent2: #3f7d85;
+    --accent2-soft: #dceaea;
+    --tag-bg: #efe4c9;
+    --tag-bg-active: #c1594a;
+    --tag-text-active: #fffdf7;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --shadow: 0 2px 10px rgba(74,60,40,0.08);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text-dark);
+    padding-bottom: 60px;
+  }
+  .app{ max-width: 900px; margin: 0 auto; padding: 20px 20px 40px; }
+
+  .app-header{
+    display:flex; align-items:flex-start; justify-content:space-between;
+    border-bottom: 2px solid var(--text-dark);
+    padding-bottom: 16px;
+    margin-bottom: 18px;
+  }
+  .app-header h1{
+    display:flex; align-items:center; gap:10px;
+    font-size: 32px; margin: 0 0 4px 0; letter-spacing: 1px;
+  }
+  .app-header .subtitle{ margin:0; color: var(--text-muted); font-size: 14px; }
+  .header-badge{
+    width: 68px; height: 68px; border-radius: 50%;
+    background: radial-gradient(circle at 30% 25%, #e07a63, var(--accent));
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#fffdf7; box-shadow: var(--shadow); flex-shrink:0;
+  }
+  .header-badge .num{ font-size: 20px; font-weight:700; line-height:1; }
+  .header-badge .lbl{ font-size: 10px; opacity:0.9; margin-top:2px; }
+
+  .icon{ width:1em; height:1em; display:inline-block; vertical-align:-0.15em; }
+
+  .toolbar{
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+  }
+  .toolbar-top{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;}
+  .btn-primary{
+    background: var(--accent); color:#fffdf7; border:none; border-radius: 999px;
+    padding: 10px 20px; font-size:14px; font-weight:600; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .btn-primary:hover{ filter: brightness(1.05); }
+  .btn-secondary{
+    background: var(--bg); color: var(--text-dark); border:1px solid var(--border-strong);
+    border-radius: 999px; padding: 8px 16px; font-size:13px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .btn-danger{
+    background: #fff; color: var(--accent); border:1px solid var(--accent);
+    border-radius: 999px; padding: 9px 18px; font-size:13px; cursor:pointer;
+  }
+  .filter-row{ margin-top:12px; display:flex; flex-wrap:wrap; gap:6px; }
+
+  .tag-pill{
+    background: var(--tag-bg); color: var(--text-dark); border:1px solid transparent;
+    border-radius: 999px; padding: 5px 13px; font-size:12px; cursor:pointer; user-select:none;
+    display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
+  }
+  .tag-pill.active{ background: var(--tag-bg-active); color: var(--tag-text-active); }
+  .tag-pill .remove{ opacity:0.6; font-size:10px; }
+
+  .empty-state{
+    text-align:center; padding: 60px 20px; color: var(--text-muted);
+    border: 2px dashed var(--border-strong); border-radius: var(--radius);
+    background: var(--bg-card);
+  }
+  .empty-state .icon{ width:40px; height:40px; margin-bottom:10px; opacity:0.5; }
+
+  .entry-card{
+    background: var(--bg-card); border:1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 18px; margin-bottom: 14px; box-shadow: var(--shadow); cursor:pointer;
+    display:flex; gap:14px; align-items:flex-start;
+  }
+  .entry-card:hover{ border-color: var(--border-strong); }
+  .entry-thumb{
+    width:64px; height:64px; border-radius: var(--radius-sm); object-fit:cover; flex-shrink:0;
+    background: var(--tag-bg); border:1px solid var(--border);
+  }
+  .entry-thumb-placeholder{
+    width:64px; height:64px; border-radius: var(--radius-sm); flex-shrink:0;
+    background: var(--tag-bg); display:flex; align-items:center; justify-content:center; color: var(--text-muted);
+  }
+  .entry-main{ flex:1; min-width:0; }
+  .entry-top{ display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .entry-title{ font-size:17px; font-weight:700; margin:0; }
+  .entry-date{ font-size:12px; color: var(--text-muted); white-space:nowrap; }
+  .entry-shop{ font-size:13px; color: var(--text-muted); margin: 3px 0 6px; }
+  .entry-tags{ display:flex; flex-wrap:wrap; gap:5px; margin-bottom:4px;}
+  .entry-meta{ font-size:12px; color: var(--text-muted); display:flex; gap:14px; flex-wrap:wrap; }
+  .entry-meta span{ display:inline-flex; align-items:center; gap:4px; }
+
+  /* modal */
+  .modal-overlay{
+    display:none; position:fixed; inset:0; background: rgba(74,60,40,0.45);
+    align-items:flex-start; justify-content:center; z-index:100; padding: 30px 14px; overflow-y:auto;
+  }
+  .modal-overlay.open{ display:flex; }
+  .modal{
+    background: var(--bg-card); border-radius: var(--radius); width:100%; max-width:640px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2); overflow:hidden; margin-bottom:40px;
+  }
+  .modal-header{
+    display:flex; justify-content:space-between; align-items:center;
+    padding: 16px 20px; border-bottom:1px solid var(--border); background: var(--bg);
+  }
+  .modal-header h2{ margin:0; font-size:18px; }
+  .close-btn{ background:none; border:none; font-size:18px; cursor:pointer; color: var(--text-muted); }
+  .modal-body{ padding: 18px 20px; max-height: 70vh; overflow-y:auto; }
+  .modal-footer{
+    padding: 14px 20px; border-top:1px solid var(--border); display:flex; justify-content:space-between; gap:10px;
+    background: var(--bg);
+  }
+
+  .field{ margin-bottom: 18px; }
+  .field label.field-label{
+    display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color: var(--text-dark); margin-bottom:6px;
+  }
+  .field input[type=text], .field input[type=datetime-local], .field textarea{
+    width:100%; border:1px solid var(--border-strong); border-radius: var(--radius-sm);
+    padding: 9px 12px; font-size:14px; font-family:inherit; background:#fff; color: var(--text-dark);
+  }
+  .field textarea{ resize:vertical; min-height:60px; }
+  .hint{ font-size:11px; color: var(--text-muted); margin-top:4px; }
+
+  .row-inline{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+
+  .chip{
+    background: var(--accent2-soft); color: var(--text-dark); border-radius: 999px;
+    padding: 5px 6px 5px 12px; font-size:12px; display:inline-flex; align-items:center; gap:6px;
+  }
+  .chip .x{ cursor:pointer; background: rgba(0,0,0,0.08); border-radius:50%; width:16px; height:16px;
+    display:flex; align-items:center; justify-content:center; font-size:10px; }
+  .chip-list{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+
+  .dropzone{
+    border:2px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 14px;
+    text-align:center; font-size:12px; color: var(--text-muted); cursor:pointer; background:#fffdf7;
+  }
+  .dropzone:hover{ border-color: var(--accent2); }
+  .dropzone.dragover{ border-color: var(--accent); background: var(--accent-soft); }
+
+  .photo-grid{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .photo-thumb{ position:relative; width:74px; height:74px; }
+  .photo-thumb img{ width:100%; height:100%; object-fit:cover; border-radius: var(--radius-sm); border:1px solid var(--border); }
+  .photo-thumb .del{
+    position:absolute; top:-6px; right:-6px; background: var(--accent); color:#fff; border-radius:50%;
+    width:18px; height:18px; font-size:11px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; border:2px solid var(--bg-card);
+  }
+
+  .loading-inline{ font-size:12px; color: var(--accent2); display:flex; align-items:center; gap:6px; margin-top:6px; }
+  .spinner{
+    width:12px; height:12px; border:2px solid var(--accent2-soft); border-top-color: var(--accent2);
+    border-radius:50%; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  .maps-link{ color: var(--accent2); text-decoration:none; font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:4px;}
+  .maps-link:hover{ text-decoration:underline; }
+  .coord-note{ font-size:11px; color: var(--text-muted); }
+
+  .lightbox{
+    display:none; position:fixed; inset:0; background: rgba(0,0,0,0.8); z-index:200;
+    align-items:center; justify-content:center; padding:20px;
+  }
+  .lightbox.open{ display:flex; }
+  .lightbox img{ max-width:100%; max-height:100%; border-radius:8px; }
+
+  @media (max-width:600px){
+    .app-header h1{ font-size:24px; }
+    .header-badge{ width:56px; height:56px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="app-header">
+    <div>
+      <h1>
+        <svg class="icon" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="var(--accent)" stroke-width="1.8">
+          <path d="M6 2h5l1 4H5l1-4z"/>
+          <path d="M5 6h7l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6z"/>
+          <path d="M17 9c2 0 3.5 1.5 3.5 3.5S19 16 17 16" />
+        </svg>
+        飲みメモ
+      </h1>
+      <p class="subtitle">飲み会の記録帳 &mdash; 誰と、どこで、なぜ飲んだか</p>
+    </div>
+    <div class="header-badge">
+      <span class="num" id="countNum">0</span>
+      <span class="lbl">件</span>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="toolbar-top">
+      <button class="btn-primary" id="addBtn">
+        <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        新しい記録を追加
+      </button>
+      <span class="hint" id="filterHint">タグをタップして絞り込み</span>
+    </div>
+    <div class="filter-row" id="filterTags"></div>
+  </div>
+
+  <div id="entryList"></div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">新しい記録</h2>
+      <button class="close-btn" id="closeModalBtn">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="field">
+        <label class="field-label">タイトル</label>
+        <input type="text" id="f-title" placeholder="例）第3四半期 部内懇親会">
+      </div>
+
+      <div class="field">
+        <label class="field-label">日時</label>
+        <input type="datetime-local" id="f-datetime">
+      </div>
+
+      <div class="field">
+        <label class="field-label">店名</label>
+        <input type="text" id="f-shop" placeholder="例）居酒屋 とりまる 町田店">
+      </div>
+
+      <div class="field">
+        <label class="field-label">
+          <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+          場所
+        </label>
+        <input type="text" id="f-address" placeholder="住所や店名を入力（地図検索に使用）">
+        <div class="row-inline" style="margin-top:8px;">
+          <button type="button" class="btn-secondary" id="getLocBtn">
+            <svg class="icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+            現在地の座標を取得
+          </button>
+          <a href="#" target="_blank" class="maps-link" id="openMapsLink" style="display:none;">
+            <svg class="icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/></svg>
+            Googleマップで開く
+          </a>
+        </div>
+        <div class="coord-note" id="coordNote"></div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">
+          <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="3"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><circle cx="17" cy="8" r="2.5"/><path d="M22 21c0-3-2-5-4-5.5"/></svg>
+          参加者
+        </label>
+        <div class="chip-list" id="participantChips"></div>
+        <div class="row-inline">
+          <input type="text" id="f-participant-input" placeholder="名前を入力（, または改行区切りで複数可）" style="flex:1; min-width:180px;">
+          <button type="button" class="btn-secondary" id="addParticipantBtn">追加</button>
+        </div>
+        <div class="row-inline" style="margin-top:8px;">
+          <label class="btn-secondary" style="cursor:pointer;">
+            <svg class="icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            CSVを読み込む
+            <input type="file" id="csvInput" accept=".csv,text/csv" style="display:none;">
+          </label>
+          <label class="btn-secondary" style="cursor:pointer;">
+            <svg class="icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            画像から読み込む
+            <input type="file" id="participantImgInput" accept="image/*" style="display:none;">
+          </label>
+        </div>
+        <div class="dropzone" id="pasteZone" tabindex="0">画像をここに貼り付け（Ctrl+V）できます — 名簿の写真からAIが人名を抽出します</div>
+        <div class="loading-inline" id="ocrLoading" style="display:none;"><span class="spinner"></span>画像から人名を読み取っています…</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">目的</label>
+        <input type="text" id="f-purpose" placeholder="例）歓送迎会、案件の打ち上げ など">
+      </div>
+
+      <div class="field">
+        <label class="field-label">
+          <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.6 12.6L12.6 20.6a2 2 0 0 1-2.8 0l-7-7a2 2 0 0 1 0-2.8l8-8A2 2 0 0 1 12.2 2H19a2 2 0 0 1 2 2v6.8a2 2 0 0 1-.4 1.8z"/><circle cx="7.5" cy="7.5" r="1.2"/></svg>
+          分類タグ
+        </label>
+        <div class="filter-row" id="tagPicker"></div>
+        <div class="row-inline" style="margin-top:8px;">
+          <input type="text" id="f-newtag-input" placeholder="新しいタグを追加" style="flex:1; min-width:140px;">
+          <button type="button" class="btn-secondary" id="addTagBtn">＋タグを追加</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">
+          <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 16l-5-4-9 7"/></svg>
+          現地写真
+        </label>
+        <label class="btn-secondary" style="cursor:pointer; display:inline-flex;">
+          写真を選択
+          <input type="file" id="photoInput" accept="image/*" multiple style="display:none;">
+        </label>
+        <div class="photo-grid" id="photoGrid"></div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">メモ</label>
+        <textarea id="f-notes" placeholder="話した内容、感想、次に活かしたいことなど"></textarea>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" id="deleteBtn" style="display:none;">この記録を削除</button>
+      <button class="btn-primary" id="saveBtn" style="margin-left:auto;">保存する</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox"><img id="lightboxImg" src=""></div>
+
+<script>
+const DEFAULT_TAGS = ["部内","本社内","社内","グループ内","OB等","社外","その他"];
+
+let events = [];
+let customTags = [];
+let activeFilters = new Set();
+
+let editingId = null;
+let pendingParticipants = [];
+let pendingTags = new Set();
+let pendingPhotos = [];
+let pendingCoords = null; // {lat, lng}
+
+const $ = (id) => document.getElementById(id);
+
+async function loadData(){
+  try{
+    const evRes = await window.storage.get('nomi-events', false);
+    events = evRes ? JSON.parse(evRes.value) : [];
+  }catch(e){ events = []; }
+  try{
+    const tagRes = await window.storage.get('nomi-tags', false);
+    customTags = tagRes ? JSON.parse(tagRes.value) : [];
+  }catch(e){ customTags = []; }
+  renderFilterTags();
+  renderEntryList();
+}
+
+async function saveEvents(){
+  try{ await window.storage.set('nomi-events', JSON.stringify(events), false); }
+  catch(e){ console.error('保存に失敗しました', e); alert('保存に失敗しました。もう一度お試しください。'); }
+}
+async function saveCustomTags(){
+  try{ await window.storage.set('nomi-tags', JSON.stringify(customTags), false); }
+  catch(e){ console.error('タグの保存に失敗しました', e); }
+}
+
+function allTags(){
+  const set = new Set(DEFAULT_TAGS);
+  customTags.forEach(t => set.add(t));
+  events.forEach(ev => (ev.tags||[]).forEach(t => set.add(t)));
+  return Array.from(set);
+}
+
+function renderFilterTags(){
+  const container = $('filterTags');
+  container.innerHTML = '';
+  allTags().forEach(tag => {
+    const pill = document.createElement('span');
+    pill.className = 'tag-pill' + (activeFilters.has(tag) ? ' active' : '');
+    pill.textContent = tag;
+    pill.onclick = () => {
+      if(activeFilters.has(tag)) activeFilters.delete(tag); else activeFilters.add(tag);
+      renderFilterTags(); renderEntryList();
+    };
+    container.appendChild(pill);
+  });
+  $('filterHint').style.display = allTags().length ? 'none' : 'inline';
+}
+
+function formatDate(dtStr){
+  if(!dtStr) return '日時未設定';
+  const d = new Date(dtStr);
+  if(isNaN(d)) return dtStr;
+  const w = ['日','月','火','水','木','金','土'][d.getDay()];
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}（${w}） ${hh}:${mm}`;
+}
+
+function renderEntryList(){
+  const list = $('entryList');
+  let filtered = events.slice();
+  if(activeFilters.size){
+    filtered = filtered.filter(ev => (ev.tags||[]).some(t => activeFilters.has(t)));
+  }
+  filtered.sort((a,b) => new Date(b.datetime||0) - new Date(a.datetime||0));
+
+  $('countNum').textContent = events.length;
+
+  if(!filtered.length){
+    list.innerHTML = `<div class="empty-state">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2h5l1 4H5l1-4z"/><path d="M5 6h7l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6z"/></svg>
+      <div>${events.length ? 'この条件に合う記録はありません' : 'まだ記録がありません。最初の一件を追加しましょう'}</div>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = '';
+  filtered.forEach(ev => {
+    const card = document.createElement('div');
+    card.className = 'entry-card';
+    const thumb = (ev.photos && ev.photos.length)
+      ? `<img class="entry-thumb" src="${ev.photos[0]}">`
+      : `<div class="entry-thumb-placeholder"><svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 16l-5-4-9 7"/></svg></div>`;
+    const tagsHtml = (ev.tags||[]).map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join('');
+    card.innerHTML = `
+      ${thumb}
+      <div class="entry-main">
+        <div class="entry-top">
+          <p class="entry-title">${escapeHtml(ev.title || '（無題）')}</p>
+          <span class="entry-date">${formatDate(ev.datetime)}</span>
+        </div>
+        <p class="entry-shop">${escapeHtml(ev.shop || '')}${ev.address ? ' ・ ' + escapeHtml(ev.address) : ''}</p>
+        <div class="entry-tags">${tagsHtml}</div>
+        <div class="entry-meta">
+          <span>👥 ${(ev.participants||[]).length}名</span>
+          ${ev.purpose ? `<span>🎯 ${escapeHtml(ev.purpose)}</span>` : ''}
+          ${(ev.photos||[]).length ? `<span>📷 ${ev.photos.length}枚</span>` : ''}
+        </div>
+      </div>
+    `;
+    card.onclick = () => openModal(ev.id);
+    list.appendChild(card);
+  });
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str == null ? '' : String(str);
+  return d.innerHTML;
+}
+
+/* ---------- Modal ---------- */
+
+function resetForm(){
+  $('f-title').value = '';
+  $('f-datetime').value = '';
+  $('f-shop').value = '';
+  $('f-address').value = '';
+  $('f-purpose').value = '';
+  $('f-notes').value = '';
+  $('f-participant-input').value = '';
+  $('f-newtag-input').value = '';
+  pendingParticipants = [];
+  pendingTags = new Set();
+  pendingPhotos = [];
+  pendingCoords = null;
+  $('openMapsLink').style.display = 'none';
+  $('coordNote').textContent = '';
+  renderParticipantChips();
+  renderTagPicker();
+  renderPhotoGrid();
+}
+
+function openModal(id){
+  resetForm();
+  editingId = id || null;
+  if(editingId){
+    const ev = events.find(e => e.id === editingId);
+    $('modalTitle').textContent = '記録を編集';
+    $('deleteBtn').style.display = 'inline-block';
+    $('f-title').value = ev.title || '';
+    $('f-datetime').value = ev.datetime || '';
+    $('f-shop').value = ev.shop || '';
+    $('f-address').value = ev.address || '';
+    $('f-purpose').value = ev.purpose || '';
+    $('f-notes').value = ev.notes || '';
+    pendingParticipants = (ev.participants||[]).slice();
+    pendingTags = new Set(ev.tags||[]);
+    pendingPhotos = (ev.photos||[]).slice();
+    pendingCoords = ev.coords || null;
+    updateMapsLink();
+  } else {
+    $('modalTitle').textContent = '新しい記録';
+    $('deleteBtn').style.display = 'none';
+  }
+  renderParticipantChips();
+  renderTagPicker();
+  renderPhotoGrid();
+  $('modalOverlay').classList.add('open');
+}
+
+function closeModal(){
+  $('modalOverlay').classList.remove('open');
+  editingId = null;
+}
+
+$('addBtn').onclick = () => openModal(null);
+$('closeModalBtn').onclick = closeModal;
+$('modalOverlay').onclick = (e) => { if(e.target === $('modalOverlay')) closeModal(); };
+
+$('saveBtn').onclick = async () => {
+  const title = $('f-title').value.trim();
+  if(!title){ alert('タイトルを入力してください'); return; }
+  const ev = {
+    id: editingId || ('ev_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)),
+    title,
+    datetime: $('f-datetime').value,
+    shop: $('f-shop').value.trim(),
+    address: $('f-address').value.trim(),
+    coords: pendingCoords,
+    participants: pendingParticipants.slice(),
+    purpose: $('f-purpose').value.trim(),
+    tags: Array.from(pendingTags),
+    photos: pendingPhotos.slice(),
+    notes: $('f-notes').value.trim(),
+  };
+  if(editingId){
+    const idx = events.findIndex(e => e.id === editingId);
+    if(idx >= 0) events[idx] = ev;
+  } else {
+    events.push(ev);
+  }
+  // persist any brand-new custom tags
+  ev.tags.forEach(t => { if(!DEFAULT_TAGS.includes(t) && !customTags.includes(t)) customTags.push(t); });
+  await saveEvents();
+  await saveCustomTags();
+  closeModal();
+  renderFilterTags();
+  renderEntryList();
+};
+
+$('deleteBtn').onclick = async () => {
+  if(!editingId) return;
+  if(!confirm('この記録を削除します。よろしいですか？')) return;
+  events = events.filter(e => e.id !== editingId);
+  await saveEvents();
+  closeModal();
+  renderFilterTags();
+  renderEntryList();
+};
+
+/* ---------- Location ---------- */
+
+function buildMapsUrl(){
+  if(pendingCoords && pendingCoords.lat != null){
+    return `https://www.google.com/maps/search/?api=1&query=${pendingCoords.lat},${pendingCoords.lng}`;
+  }
+  const addr = $('f-address').value.trim();
+  if(addr){
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+  }
+  return null;
+}
+
+function updateMapsLink(){
+  const url = buildMapsUrl();
+  const link = $('openMapsLink');
+  if(url){ link.href = url; link.style.display = 'inline-flex'; }
+  else { link.style.display = 'none'; }
+  $('coordNote').textContent = pendingCoords ? `現在地の座標を取得済み（${pendingCoords.lat.toFixed(5)}, ${pendingCoords.lng.toFixed(5)}）` : '';
+}
+
+$('f-address').addEventListener('input', updateMapsLink);
+
+$('getLocBtn').onclick = () => {
+  if(!navigator.geolocation){ alert('この端末では位置情報を取得できません'); return; }
+  $('coordNote').textContent = '位置情報を取得中…';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      pendingCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      updateMapsLink();
+    },
+    (err) => {
+      $('coordNote').textContent = '位置情報を取得できませんでした（許可設定をご確認ください）';
+    },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+};
+
+/* ---------- Participants ---------- */
+
+function renderParticipantChips(){
+  const container = $('participantChips');
+  container.innerHTML = '';
+  pendingParticipants.forEach((name, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = `${escapeHtml(name)}<span class="x" data-i="${i}">✕</span>`;
+    chip.querySelector('.x').onclick = () => { pendingParticipants.splice(i,1); renderParticipantChips(); };
+    container.appendChild(chip);
+  });
+}
+
+function addParticipantsFromText(text){
+  const names = text.split(/[,、\n]/).map(s => s.trim()).filter(Boolean);
+  names.forEach(n => { if(!pendingParticipants.includes(n)) pendingParticipants.push(n); });
+  renderParticipantChips();
+}
+
+$('addParticipantBtn').onclick = () => {
+  addParticipantsFromText($('f-participant-input').value);
+  $('f-participant-input').value = '';
+};
+$('f-participant-input').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); $('addParticipantBtn').click(); }
+});
+
+$('csvInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = reader.result;
+    const lines = text.split(/\r?\n/);
+    lines.forEach(line => {
+      if(!line.trim()) return;
+      const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g,'')).filter(Boolean);
+      cols.forEach(c => { if(!pendingParticipants.includes(c)) pendingParticipants.push(c); });
+    });
+    renderParticipantChips();
+  };
+  reader.readAsText(file, 'UTF-8');
+  e.target.value = '';
+});
+
+function resizeImageFile(file, maxDim, quality){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > maxDim || height > maxDim){
+          if(width > height){ height = Math.round(height * maxDim / width); width = maxDim; }
+          else { width = Math.round(width * maxDim / height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function extractNamesFromImage(dataUrl){
+  $('ocrLoading').style.display = 'flex';
+  try{
+    const base64 = dataUrl.split(',')[1];
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+            { type: 'text', text: 'この画像に写っている参加者名簿・出席者一覧から、人名だけを抽出してください。役職や部署名は名前に含めず、人名部分のみ取り出してください。前置きや説明は一切不要です。JSON配列（文字列の配列）のみを出力してください。例: ["山田太郎","佐藤花子"]' }
+          ]
+        }]
+      })
+    });
+    const data = await res.json();
+    const textBlock = (data.content || []).find(b => b.type === 'text');
+    if(!textBlock){ throw new Error('応答を取得できませんでした'); }
+    const clean = textBlock.text.replace(/```json|```/g, '').trim();
+    const names = JSON.parse(clean);
+    if(Array.isArray(names)){
+      names.forEach(n => { const t = String(n).trim(); if(t && !pendingParticipants.includes(t)) pendingParticipants.push(t); });
+      renderParticipantChips();
+    }
+  }catch(err){
+    console.error(err);
+    alert('画像からの読み取りに失敗しました。名前がはっきり写っている画像でお試しください。');
+  }finally{
+    $('ocrLoading').style.display = 'none';
+  }
+}
+
+$('participantImgInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const resized = await resizeImageFile(file, 1200, 0.85);
+  await extractNamesFromImage(resized);
+  e.target.value = '';
+});
+
+const pasteZone = $('pasteZone');
+pasteZone.addEventListener('paste', async (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if(!items) return;
+  for(const item of items){
+    if(item.type.indexOf('image') === 0){
+      const file = item.getAsFile();
+      const resized = await resizeImageFile(file, 1200, 0.85);
+      await extractNamesFromImage(resized);
+    }
+  }
+});
+['dragover','dragleave','drop'].forEach(evt => {
+  pasteZone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    pasteZone.classList.toggle('dragover', evt === 'dragover');
+  });
+});
+pasteZone.addEventListener('drop', async (e) => {
+  const file = e.dataTransfer.files[0];
+  if(file && file.type.indexOf('image') === 0){
+    const resized = await resizeImageFile(file, 1200, 0.85);
+    await extractNamesFromImage(resized);
+  }
+});
+
+/* ---------- Tags ---------- */
+
+function renderTagPicker(){
+  const container = $('tagPicker');
+  container.innerHTML = '';
+  allTags().forEach(tag => {
+    const pill = document.createElement('span');
+    pill.className = 'tag-pill' + (pendingTags.has(tag) ? ' active' : '');
+    pill.textContent = tag;
+    pill.onclick = () => {
+      if(pendingTags.has(tag)) pendingTags.delete(tag); else pendingTags.add(tag);
+      renderTagPicker();
+    };
+    container.appendChild(pill);
+  });
+}
+
+$('addTagBtn').onclick = () => {
+  const val = $('f-newtag-input').value.trim();
+  if(!val) return;
+  pendingTags.add(val);
+  if(!customTags.includes(val) && !DEFAULT_TAGS.includes(val)) customTags.push(val);
+  $('f-newtag-input').value = '';
+  renderTagPicker();
+};
+$('f-newtag-input').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); $('addTagBtn').click(); }
+});
+
+/* ---------- Photos ---------- */
+
+function renderPhotoGrid(){
+  const grid = $('photoGrid');
+  grid.innerHTML = '';
+  pendingPhotos.forEach((src, i) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<img src="${src}"><span class="del">✕</span>`;
+    div.querySelector('img').onclick = () => openLightbox(src);
+    div.querySelector('.del').onclick = (e) => { e.stopPropagation(); pendingPhotos.splice(i,1); renderPhotoGrid(); };
+    grid.appendChild(div);
+  });
+}
+
+$('photoInput').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  for(const file of files){
+    try{
+      const resized = await resizeImageFile(file, 1000, 0.75);
+      pendingPhotos.push(resized);
+    }catch(err){ console.error(err); }
+  }
+  renderPhotoGrid();
+  e.target.value = '';
+});
+
+function openLightbox(src){
+  $('lightboxImg').src = src;
+  $('lightbox').classList.add('open');
+}
+$('lightbox').onclick = () => $('lightbox').classList.remove('open');
+
+loadData();
+</script>
+</body>
+</html>
