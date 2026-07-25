@@ -401,8 +401,8 @@
           <tr><td>purpose</td><td>目的</td></tr>
           <tr><td>tags</td><td>分類タグ（複数は「｜」区切り）</td></tr>
           <tr><td>cost</td><td>費用（円・数値）</td></tr>
-          <tr><td>entertain_host</td><td>接待をした場合は1</td></tr>
-          <tr><td>entertain_guest</td><td>接待をされた場合は1</td></tr>
+          <tr><td>entertain_host</td><td>交際費として支払った場合は1</td></tr>
+          <tr><td>entertain_guest</td><td>接待を受けた場合は1</td></tr>
           <tr><td>rating_food / rating_drink / rating_cospa / rating_quiet / rating_mood</td><td>評価（1〜5の数値）</td></tr>
           <tr><td>notes</td><td>メモ</td></tr>
         </table>
@@ -478,13 +478,13 @@
       </div>
 
       <div class="field">
-        <label class="field-label">接待</label>
+        <label class="field-label">費用区分</label>
         <div class="row-inline">
           <label class="checkbox-label">
-            <input type="checkbox" id="f-entertain-host"> 接待をした
+            <input type="checkbox" id="f-entertain-host"> 交際費
           </label>
           <label class="checkbox-label">
-            <input type="checkbox" id="f-entertain-guest"> 接待をされた
+            <input type="checkbox" id="f-entertain-guest"> 接待受
           </label>
         </div>
       </div>
@@ -925,7 +925,7 @@ function renderEntryList(){
     const tagsHtml = (ev.tags||[]).map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join('');
     const round = ev.round || '一次会';
     const roundBadge = `<span class="round-badge${round === '二次会' ? ' r2' : ''}">${round}</span>`;
-    const entertainBadges = `${ev.entertainHost ? '<span class="entertain-badge">接待した</span>' : ''}${ev.entertainGuest ? '<span class="entertain-badge guest">接待された</span>' : ''}`;
+    const entertainBadges = `${ev.entertainHost ? '<span class="entertain-badge">交際費</span>' : ''}${ev.entertainGuest ? '<span class="entertain-badge guest">接待受</span>' : ''}`;
     card.innerHTML = `
       ${thumb}
       <div class="entry-main">
