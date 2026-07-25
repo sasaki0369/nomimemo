@@ -141,6 +141,16 @@
     background: var(--tag-bg); color: var(--text-dark);
   }
   .round-badge.r2{ background: var(--accent2-soft); color: var(--accent2); }
+  .entertain-badge{
+    font-size:11px; font-weight:700; border-radius:999px; padding:3px 10px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .entertain-badge.guest{ background: var(--accent2-soft); color: var(--accent2); }
+
+  .checkbox-label{
+    display:inline-flex; align-items:center; gap:6px; font-size:13px; color: var(--text-dark); cursor:pointer;
+  }
+  .checkbox-label input{ width:16px; height:16px; accent-color: var(--accent); cursor:pointer; }
 
   .tag-pill.round-pill{ min-width:64px; text-align:center; justify-content:center; }
 
@@ -391,6 +401,8 @@
           <tr><td>purpose</td><td>目的</td></tr>
           <tr><td>tags</td><td>分類タグ（複数は「｜」区切り）</td></tr>
           <tr><td>cost</td><td>費用（円・数値）</td></tr>
+          <tr><td>entertain_host</td><td>接待をした場合は1</td></tr>
+          <tr><td>entertain_guest</td><td>接待をされた場合は1</td></tr>
           <tr><td>rating_food / rating_drink / rating_cospa / rating_quiet / rating_mood</td><td>評価（1〜5の数値）</td></tr>
           <tr><td>notes</td><td>メモ</td></tr>
         </table>
@@ -462,6 +474,18 @@
           <span class="tag-pill round-pill" data-round="一次会" id="round1Pill">一次会</span>
           <span class="tag-pill round-pill" data-round="二次会" id="round2Pill">二次会</span>
           <input type="number" id="f-cost" placeholder="費用（円）" inputmode="numeric" style="width:150px;">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">接待</label>
+        <div class="row-inline">
+          <label class="checkbox-label">
+            <input type="checkbox" id="f-entertain-host"> 接待をした
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="f-entertain-guest"> 接待をされた
+          </label>
         </div>
       </div>
 
@@ -901,6 +925,7 @@ function renderEntryList(){
     const tagsHtml = (ev.tags||[]).map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join('');
     const round = ev.round || '一次会';
     const roundBadge = `<span class="round-badge${round === '二次会' ? ' r2' : ''}">${round}</span>`;
+    const entertainBadges = `${ev.entertainHost ? '<span class="entertain-badge">接待した</span>' : ''}${ev.entertainGuest ? '<span class="entertain-badge guest">接待された</span>' : ''}`;
     card.innerHTML = `
       ${thumb}
       <div class="entry-main">
@@ -909,11 +934,11 @@ function renderEntryList(){
           <span class="entry-date">${formatDate(ev.datetime)}</span>
         </div>
         <p class="entry-shop">${escapeHtml(ev.shop || '')}${ev.address ? ' ・ ' + escapeHtml(ev.address) : ''}</p>
-        <div class="entry-tags">${tagsHtml}</div>
+        <div class="entry-tags">${tagsHtml}${entertainBadges}</div>
         <div class="entry-meta">
           <span>👥 ${(ev.participants||[]).length}名</span>
           ${ev.purpose ? `<span>🎯 ${escapeHtml(ev.purpose)}</span>` : ''}
-          ${ev.cost ? `<span>💴 ¥${Number(ev.cost).toLocaleString()}</span>` : ''}
+          ${(ev.cost != null && ev.cost !== '') ? `<span>💴 ¥${Number(ev.cost).toLocaleString()}</span>` : ''}
           ${avgRating(ev) ? `<span>⭐ ${avgRating(ev)}</span>` : ''}
           ${(ev.photos||[]).length ? `<span>📷 ${ev.photos.length}枚</span>` : ''}
         </div>
@@ -959,6 +984,8 @@ function resetForm(){
   $('f-cost').value = '';
   $('f-participant-input').value = '';
   $('f-newtag-input').value = '';
+  $('f-entertain-host').checked = false;
+  $('f-entertain-guest').checked = false;
   pendingParticipants = [];
   pendingTags = new Set();
   pendingPhotos = [];
@@ -1019,7 +1046,9 @@ function openModal(id){
     $('f-address').value = ev.address || '';
     $('f-purpose').value = ev.purpose || '';
     $('f-notes').value = ev.notes || '';
-    $('f-cost').value = ev.cost || '';
+    $('f-cost').value = (ev.cost != null && ev.cost !== '') ? ev.cost : '';
+    $('f-entertain-host').checked = !!ev.entertainHost;
+    $('f-entertain-guest').checked = !!ev.entertainGuest;
     pendingParticipants = (ev.participants||[]).slice();
     pendingTags = new Set(ev.tags||[]);
     pendingPhotos = (ev.photos||[]).slice();
@@ -1068,6 +1097,8 @@ $('saveBtn').onclick = async () => {
     round: pendingRound,
     cost: $('f-cost').value ? Number($('f-cost').value) : null,
     ratings: Object.assign({}, pendingRatings),
+    entertainHost: $('f-entertain-host').checked,
+    entertainGuest: $('f-entertain-guest').checked,
   };
   // persist any brand-new custom tags
   let tagsChanged = false;
@@ -1565,7 +1596,7 @@ $('importInput').addEventListener('change', (e) => {
 
 /* ---- CSV export / import ---- */
 
-const CSV_COLUMNS = ['id','title','date','round','shop','address','lat','lng','participants','purpose','tags','cost','rating_food','rating_drink','rating_cospa','rating_quiet','rating_mood','notes'];
+const CSV_COLUMNS = ['id','title','date','round','shop','address','lat','lng','participants','purpose','tags','cost','entertain_host','entertain_guest','rating_food','rating_drink','rating_cospa','rating_quiet','rating_mood','notes'];
 
 function csvEscape(field){
   const s = field == null ? '' : String(field);
@@ -1584,6 +1615,7 @@ function eventsToCsv(list){
       c.lat != null ? c.lat : '', c.lng != null ? c.lng : '',
       (ev.participants || []).join('｜'), ev.purpose || '', (ev.tags || []).join('｜'),
       ev.cost != null ? ev.cost : '',
+      ev.entertainHost ? '1' : '', ev.entertainGuest ? '1' : '',
       r.food || '', r.drink || '', r.cospa || '', r.quiet || '', r.mood || '',
       ev.notes || '',
     ].map(csvEscape).join(',');
@@ -1645,6 +1677,8 @@ function csvRowsToEvents(rows){
       photos: [],
       notes: get('notes'),
       cost: get('cost') ? Number(get('cost')) : null,
+      entertainHost: ['1','true','TRUE','はい'].includes(get('entertain_host')),
+      entertainGuest: ['1','true','TRUE','はい'].includes(get('entertain_guest')),
       ratings: {
         food: Number(get('rating_food')) || 0,
         drink: Number(get('rating_drink')) || 0,
