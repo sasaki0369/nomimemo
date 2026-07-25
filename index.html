@@ -275,6 +275,15 @@
   .data-panel h3{ margin:0 0 10px; font-size:14px; }
   .data-panel .row-inline{ margin-bottom:8px; }
 
+  .format-help{
+    margin-top:12px; border-top:1px solid var(--border); padding-top:10px; font-size:12px; color: var(--text-dark);
+  }
+  .format-help summary{ cursor:pointer; font-weight:700; color: var(--accent2); margin-bottom:6px; }
+  .format-help p{ margin:6px 0; line-height:1.6; }
+  .format-table{ width:100%; border-collapse:collapse; font-size:11px; margin:8px 0; }
+  .format-table td{ padding:4px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+  .format-table td:first-child{ font-family: "SF Mono","Menlo","Consolas",monospace; white-space:nowrap; color: var(--accent); font-weight:600; }
+
   .fb-banner{
     font-size:12px; padding:8px 14px; border-radius: var(--radius-sm); margin-bottom:14px;
     background: var(--accent2-soft); color: var(--accent2); display:none;
@@ -350,14 +359,43 @@
     <div class="data-panel" id="dataPanel">
       <h3>データ管理</h3>
       <div class="row-inline">
-        <button class="btn-secondary" id="exportBtn">📤 エクスポート（JSONで保存）</button>
+        <button class="btn-secondary" id="exportBtn">📤 JSONエクスポート</button>
         <label class="btn-secondary" style="cursor:pointer;">
-          📥 インポート（JSONを読み込み）
+          📥 JSONインポート
           <input type="file" id="importInput" accept="application/json,.json" style="display:none;">
+        </label>
+      </div>
+      <div class="row-inline">
+        <button class="btn-secondary" id="exportCsvBtn">📤 CSVエクスポート</button>
+        <label class="btn-secondary" style="cursor:pointer;">
+          📥 CSVインポート
+          <input type="file" id="importCsvInput" accept="text/csv,.csv" style="display:none;">
         </label>
         <button class="btn-danger" id="clearBtn">🗑 全データを消去</button>
       </div>
-      <div class="hint">エクスポートは端末にJSONファイルとして保存します。インポートは既存データに追加・上書き（同じIDは上書き）されます。</div>
+      <div class="hint">エクスポートは端末にファイルとして保存します。インポートは既存データに追加・上書き（同じIDは上書き）されます。</div>
+
+      <details class="format-help">
+        <summary>データ形式について</summary>
+        <p><strong>JSON形式</strong>：記録・タグ・写真を含む完全なバックアップです。エクスポートしたファイルをそのままインポートすれば復元できます。他のブラウザ／端末への移行にも使えます。</p>
+        <p><strong>CSV形式</strong>：Excel等の表計算ソフトで一覧編集しやすい形式です。文字コードはUTF-8（BOM付き）。写真データは含まれません。列は以下の通りです。</p>
+        <table class="format-table">
+          <tr><td>id</td><td>記録ID（空欄なら新規作成。既存と一致するIDは上書き）</td></tr>
+          <tr><td>title</td><td>タイトル</td></tr>
+          <tr><td>date</td><td>日付（YYYY-MM-DD）</td></tr>
+          <tr><td>round</td><td>一次会 または 二次会</td></tr>
+          <tr><td>shop</td><td>店名</td></tr>
+          <tr><td>address</td><td>住所</td></tr>
+          <tr><td>lat / lng</td><td>緯度・経度（任意）</td></tr>
+          <tr><td>participants</td><td>参加者（複数は「｜」区切り）</td></tr>
+          <tr><td>purpose</td><td>目的</td></tr>
+          <tr><td>tags</td><td>分類タグ（複数は「｜」区切り）</td></tr>
+          <tr><td>cost</td><td>費用（円・数値）</td></tr>
+          <tr><td>rating_food / rating_drink / rating_cospa / rating_quiet / rating_mood</td><td>評価（1〜5の数値）</td></tr>
+          <tr><td>notes</td><td>メモ</td></tr>
+        </table>
+        <p class="hint">カンマや改行を含む項目は自動的に引用符（"）で囲んで出力されます。インポート時も同様の形式でお願いします。</p>
+      </details>
     </div>
 
     <div id="entryList"></div>
@@ -598,7 +636,6 @@ function initStorage(){
       firebase.initializeApp(FIREBASE_CONFIG);
       fbRoot = firebase.database().ref('nomiMemo');
       useFirebase = true;
-      showFbBanner('🔥 Firebaseに接続しています。複数端末でデータが同期されます。', false);
       fbRoot.child('events').on('value', (snap) => {
         const val = snap.val() || {};
         events = Object.values(val);
@@ -1355,27 +1392,38 @@ function renderSummary(){
     return;
   }
 
-  // monthKey -> tag -> { c1, c2, cost }
+  // monthKey -> tag -> { c1, c2, cost, costDays: {date: dayTotalCost} }
   const monthsMap = {};
-  // monthKey -> { c1, c2, cost } (event-based totals, no double counting across tags)
+  // monthKey -> { c1, c2, cost, costDays } (event-based totals, no double counting across tags)
   const monthTotals = {};
   dated.forEach(ev => {
     const d = new Date(ev.datetime);
     const monthKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     const tags = (ev.tags && ev.tags.length) ? ev.tags : ['（タグなし）'];
     const round = ev.round || '一次会';
-    const cost = ev.cost ? Number(ev.cost) : 0;
+    const hasCost = ev.cost != null && ev.cost !== '';
+    const cost = hasCost ? Number(ev.cost) : 0;
+    const dateKey = ev.datetime;
     if(!monthsMap[monthKey]) monthsMap[monthKey] = {};
     tags.forEach(tag => {
-      if(!monthsMap[monthKey][tag]) monthsMap[monthKey][tag] = { c1:0, c2:0, cost:0 };
+      if(!monthsMap[monthKey][tag]) monthsMap[monthKey][tag] = { c1:0, c2:0, cost:0, costDays:{} };
       const bucket = monthsMap[monthKey][tag];
       if(round === '二次会') bucket.c2++; else bucket.c1++;
       bucket.cost += cost;
+      if(hasCost) bucket.costDays[dateKey] = (bucket.costDays[dateKey] || 0) + cost;
     });
-    if(!monthTotals[monthKey]) monthTotals[monthKey] = { c1:0, c2:0, cost:0 };
-    if(round === '二次会') monthTotals[monthKey].c2++; else monthTotals[monthKey].c1++;
-    monthTotals[monthKey].cost += cost;
+    if(!monthTotals[monthKey]) monthTotals[monthKey] = { c1:0, c2:0, cost:0, costDays:{} };
+    const mt = monthTotals[monthKey];
+    if(round === '二次会') mt.c2++; else mt.c1++;
+    mt.cost += cost;
+    if(hasCost) mt.costDays[dateKey] = (mt.costDays[dateKey] || 0) + cost;
   });
+
+  function avgCostPerDay(costDays){
+    const vals = Object.values(costDays);
+    if(!vals.length) return null;
+    return vals.reduce((a,b) => a+b, 0) / vals.length;
+  }
 
   const monthsAsc = Object.keys(monthsMap).sort();
 
@@ -1415,11 +1463,13 @@ function renderSummary(){
     const totals = monthTotals[monthKey];
     const totalWeeklyAvg = ((totals.c1+totals.c2) / weeksInMonth).toFixed(1);
     const totalMonthlyAvg = monthlyAvgTotalLookup[monthKey].toFixed(1);
+    const totalAvgCost = avgCostPerDay(totals.costDays);
     const totalRow = `<tr class="summary-total-row">
       <td class="summary-tag-name">月合計</td>
       <td>${totals.c1}回</td>
       <td>${totals.c2}回</td>
       <td>¥${totals.cost.toLocaleString()}</td>
+      <td>${totalAvgCost != null ? '¥'+Math.round(totalAvgCost).toLocaleString() : '−'}</td>
       <td>${totalWeeklyAvg}回</td>
       <td>${totalMonthlyAvg}回</td>
     </tr>`;
@@ -1429,11 +1479,13 @@ function renderSummary(){
       const total = b.c1 + b.c2;
       const weeklyAvg = (total / weeksInMonth).toFixed(1);
       const monthlyAvg = monthlyAvgLookup[`${monthKey}|${tag}`].toFixed(1);
+      const avgCost = avgCostPerDay(b.costDays);
       return `<tr>
         <td class="summary-tag-name">${escapeHtml(tag)}</td>
         <td>${b.c1}回</td>
         <td>${b.c2}回</td>
         <td>¥${b.cost.toLocaleString()}</td>
+        <td>${avgCost != null ? '¥'+Math.round(avgCost).toLocaleString() : '−'}</td>
         <td>${weeklyAvg}回</td>
         <td>${monthlyAvg}回</td>
       </tr>`;
@@ -1451,6 +1503,7 @@ function renderSummary(){
               <th>一次会</th>
               <th>二次会</th>
               <th>合計費用</th>
+              <th>平均費用<br>(1日あたり)</th>
               <th>週平均<br>(当月内)</th>
               <th>月平均<br>(累計)</th>
             </tr>
@@ -1504,6 +1557,142 @@ $('importInput').addEventListener('change', (e) => {
     }catch(err){
       console.error(err);
       alert('インポートに失敗しました。正しいJSONファイルかご確認ください。');
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+  e.target.value = '';
+});
+
+/* ---- CSV export / import ---- */
+
+const CSV_COLUMNS = ['id','title','date','round','shop','address','lat','lng','participants','purpose','tags','cost','rating_food','rating_drink','rating_cospa','rating_quiet','rating_mood','notes'];
+
+function csvEscape(field){
+  const s = field == null ? '' : String(field);
+  if(/[",\n\r]/.test(s)){
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function eventsToCsv(list){
+  const rows = list.map(ev => {
+    const r = ev.ratings || {};
+    const c = ev.coords || {};
+    return [
+      ev.id, ev.title || '', ev.datetime || '', ev.round || '一次会', ev.shop || '', ev.address || '',
+      c.lat != null ? c.lat : '', c.lng != null ? c.lng : '',
+      (ev.participants || []).join('｜'), ev.purpose || '', (ev.tags || []).join('｜'),
+      ev.cost != null ? ev.cost : '',
+      r.food || '', r.drink || '', r.cospa || '', r.quiet || '', r.mood || '',
+      ev.notes || '',
+    ].map(csvEscape).join(',');
+  });
+  return [CSV_COLUMNS.join(','), ...rows].join('\r\n');
+}
+
+function parseCsvText(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        field += c;
+      }
+    } else if(c === '"'){
+      inQuotes = true;
+    } else if(c === ','){
+      row.push(field); field = '';
+    } else if(c === '\n'){
+      row.push(field); rows.push(row); row = []; field = '';
+    } else if(c === '\r'){
+      // skip, handled by following \n
+    } else {
+      field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length === 1 && r[0].trim() === ''));
+}
+
+function csvRowsToEvents(rows){
+  if(!rows.length) return [];
+  const header = rows[0].map(h => h.trim());
+  const idx = {};
+  header.forEach((h, i) => { idx[h] = i; });
+  const out = [];
+  for(let r = 1; r < rows.length; r++){
+    const row = rows[r];
+    const get = (key) => (idx[key] != null && row[idx[key]] != null) ? String(row[idx[key]]).trim() : '';
+    const title = get('title');
+    if(!title) continue;
+    const lat = get('lat'), lng = get('lng');
+    out.push({
+      id: get('id') || ('ev_' + Date.now() + '_' + Math.random().toString(36).slice(2,7) + '_' + r),
+      title,
+      datetime: get('date'),
+      round: get('round') === '二次会' ? '二次会' : '一次会',
+      shop: get('shop'),
+      address: get('address'),
+      coords: (lat && lng) ? { lat: Number(lat), lng: Number(lng) } : null,
+      participants: get('participants') ? get('participants').split('｜').map(s => s.trim()).filter(Boolean) : [],
+      purpose: get('purpose'),
+      tags: get('tags') ? get('tags').split('｜').map(s => s.trim()).filter(Boolean) : [],
+      photos: [],
+      notes: get('notes'),
+      cost: get('cost') ? Number(get('cost')) : null,
+      ratings: {
+        food: Number(get('rating_food')) || 0,
+        drink: Number(get('rating_drink')) || 0,
+        cospa: Number(get('rating_cospa')) || 0,
+        quiet: Number(get('rating_quiet')) || 0,
+        mood: Number(get('rating_mood')) || 0,
+      },
+    });
+  }
+  return out;
+}
+
+$('exportCsvBtn').onclick = () => {
+  const csv = '\uFEFF' + eventsToCsv(events);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `nomi-memo-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+$('importCsvInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try{
+      const rows = parseCsvText(reader.result);
+      const importedEvents = csvRowsToEvents(rows);
+      if(!importedEvents.length){
+        alert('有効な記録データが見つかりませんでした。1行目が見出し行（id,title,date...）になっているかご確認ください。');
+        return;
+      }
+      if(!confirm(`${importedEvents.length}件の記録をCSVからインポートします。同じIDの記録は上書きされます。よろしいですか？`)) return;
+      let tagsChanged = false;
+      for(const ev of importedEvents){
+        await upsertEventRemote(ev);
+        ev.tags.forEach(t => { if(!DEFAULT_TAGS.includes(t) && !customTags.includes(t)){ customTags.push(t); tagsChanged = true; } });
+      }
+      if(tagsChanged) await saveTagsRemote();
+      alert('CSVインポートが完了しました。');
+    }catch(err){
+      console.error(err);
+      alert('CSVインポートに失敗しました。書式をご確認ください。');
     }
   };
   reader.readAsText(file, 'UTF-8');
