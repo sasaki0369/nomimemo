@@ -14,6 +14,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#c1594a">
 
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
 <style>
   :root{
     --bg: #f7f0e3;
@@ -228,6 +233,35 @@
   .maps-link:hover{ text-decoration:underline; }
   .coord-note{ font-size:11px; color: var(--text-muted); }
 
+  .map-box{
+    display:none; height: 220px; border-radius: var(--radius-sm); margin-top:10px;
+    border:1px solid var(--border-strong); overflow:hidden;
+  }
+  .map-box.open{ display:block; }
+  .map-hint{ font-size:11px; color: var(--text-muted); margin-top:4px; }
+
+  .rating-group{ margin-bottom:10px; }
+  .rating-row{ display:flex; align-items:center; gap:10px; }
+  .rating-row .rating-label{ width:64px; font-size:13px; flex-shrink:0; }
+  .stars{ display:flex; gap:2px; }
+  .stars .star{ font-size:20px; cursor:pointer; color: var(--border-strong); user-select:none; }
+  .stars .star.filled{ color: var(--accent); }
+
+  .data-panel{
+    background: var(--bg-card); border:1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; margin-bottom:16px; box-shadow: var(--shadow); display:none;
+  }
+  .data-panel.open{ display:block; }
+  .data-panel h3{ margin:0 0 10px; font-size:14px; }
+  .data-panel .row-inline{ margin-bottom:8px; }
+
+  .fb-banner{
+    font-size:12px; padding:8px 14px; border-radius: var(--radius-sm); margin-bottom:14px;
+    background: var(--accent2-soft); color: var(--accent2); display:none;
+  }
+  .fb-banner.show{ display:block; }
+  .fb-banner.error{ background: var(--accent-soft); color: var(--accent); }
+
   .lightbox{
     display:none; position:fixed; inset:0; background: rgba(0,0,0,0.8); z-index:200;
     align-items:center; justify-content:center; padding:20px;
@@ -269,6 +303,8 @@
     </div>
   </header>
 
+  <div class="fb-banner" id="fbBanner"></div>
+
   <div id="listView">
     <div class="toolbar">
       <div class="toolbar-top">
@@ -280,9 +316,26 @@
           <svg class="icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V10M12 19V5M20 19v-6"/></svg>
           集計を見る
         </button>
+        <button class="btn-secondary" id="showDataPanelBtn">
+          <svg class="icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.64 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.64a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.36 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
+          データ管理
+        </button>
         <span class="hint" id="filterHint">タグをタップして絞り込み</span>
       </div>
       <div class="filter-row" id="filterTags"></div>
+    </div>
+
+    <div class="data-panel" id="dataPanel">
+      <h3>データ管理</h3>
+      <div class="row-inline">
+        <button class="btn-secondary" id="exportBtn">📤 エクスポート（JSONで保存）</button>
+        <label class="btn-secondary" style="cursor:pointer;">
+          📥 インポート（JSONを読み込み）
+          <input type="file" id="importInput" accept="application/json,.json" style="display:none;">
+        </label>
+        <button class="btn-danger" id="clearBtn">🗑 全データを消去</button>
+      </div>
+      <div class="hint">エクスポートは端末にJSONファイルとして保存します。インポートは既存データに追加・上書き（同じIDは上書き）されます。</div>
     </div>
 
     <div id="entryList"></div>
@@ -315,8 +368,8 @@
       </div>
 
       <div class="field">
-        <label class="field-label">日時</label>
-        <input type="datetime-local" id="f-datetime">
+        <label class="field-label">日付</label>
+        <input type="date" id="f-datetime">
         <div class="hint">同じ日付でも一次会・二次会をそれぞれ別の記録として登録できます</div>
       </div>
 
@@ -351,6 +404,8 @@
           </a>
         </div>
         <div class="coord-note" id="coordNote"></div>
+        <div class="map-box" id="mapBox"></div>
+        <div class="map-hint" id="mapHint" style="display:none;">地図をドラッグ、またはピンをドラッグして位置を補正できます</div>
       </div>
 
       <div class="field">
@@ -382,6 +437,14 @@
       <div class="field">
         <label class="field-label">目的</label>
         <input type="text" id="f-purpose" placeholder="例）歓送迎会、案件の打ち上げ など">
+      </div>
+
+      <div class="field">
+        <label class="field-label">
+          <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17.3l-5.4 3 1-6-4.4-4.3 6-.9L12 3l2.8 5.9 6 .9-4.4 4.3 1 6z"/></svg>
+          お店の評価
+        </label>
+        <div id="ratingGroup"></div>
       </div>
 
       <div class="field">
@@ -425,6 +488,26 @@
 
 <script>
 const DEFAULT_TAGS = ["部内","本社内","社内","グループ内","OB等","社外","その他"];
+const RATING_CATEGORIES = [
+  { key: 'food',  label: '料理' },
+  { key: 'drink', label: 'ドリンク' },
+  { key: 'cospa', label: 'コスパ' },
+  { key: 'quiet', label: '静かさ' },
+  { key: 'mood',  label: '雰囲気' },
+];
+
+// ---- Firebase設定 ----
+// databaseURL はご自身のFirebaseコンソール「Realtime Database」ページに表示される
+// URLと一致しているかご確認ください（リージョンによって末尾が異なります）。
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBkU3HfYgBlRf631us7cHJkvQG5kOC2Dqw",
+  authDomain: "nomi-memo.firebaseapp.com",
+  databaseURL: "https://nomi-memo-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "nomi-memo",
+  storageBucket: "nomi-memo.firebasestorage.app",
+  messagingSenderId: "24465598137",
+  appId: "1:24465598137:web:5b3b636f054ef0623ddd68"
+};
 
 let events = [];
 let customTags = [];
@@ -436,31 +519,179 @@ let pendingTags = new Set();
 let pendingPhotos = [];
 let pendingCoords = null; // {lat, lng}
 let pendingRound = '一次会';
+let pendingRatings = {};
+
+let useFirebase = false;
+let fbRoot = null;
+let leafletMap = null;
+let leafletMarker = null;
 
 const $ = (id) => document.getElementById(id);
 
-async function loadData(){
-  try{
-    const evRes = await window.storage.get('nomi-events', false);
-    events = evRes ? JSON.parse(evRes.value) : [];
-  }catch(e){ events = []; }
-  try{
-    const tagRes = await window.storage.get('nomi-tags', false);
-    customTags = tagRes ? JSON.parse(tagRes.value) : [];
-  }catch(e){ customTags = []; }
+function showFbBanner(msg, isError){
+  const b = $('fbBanner');
+  b.textContent = msg;
+  b.classList.add('show');
+  b.classList.toggle('error', !!isError);
+}
+
+function initStorage(){
+  const configured = FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY';
+  if(configured){
+    try{
+      firebase.initializeApp(FIREBASE_CONFIG);
+      fbRoot = firebase.database().ref('nomiMemo');
+      useFirebase = true;
+      showFbBanner('🔥 Firebaseに接続しています。複数端末でデータが同期されます。', false);
+      fbRoot.child('events').on('value', (snap) => {
+        const val = snap.val() || {};
+        events = Object.values(val);
+        maybeInsertSampleData();
+        renderFilterTags();
+        renderEntryList();
+        renderStatsDuo();
+      }, (err) => {
+        console.error(err);
+        showFbBanner('Firebaseからの読み込みに失敗しました。Firebase設定やセキュリティルールをご確認ください。', true);
+      });
+      fbRoot.child('tags').on('value', (snap) => {
+        customTags = snap.val() || [];
+        renderFilterTags();
+      });
+    }catch(e){
+      console.error(e);
+      useFirebase = false;
+      showFbBanner('⚠️ Firebaseへの接続に失敗しました。この端末にのみ保存されます。', true);
+      loadLocal();
+    }
+  } else {
+    showFbBanner('⚠️ Firebase未設定のため、この端末にのみ保存されます。複数端末で同期するには、HTML内のFIREBASE_CONFIGを書き換えてください。', true);
+    loadLocal();
+  }
+}
+
+function loadLocal(){
+  try{ events = JSON.parse(localStorage.getItem('nomi-events') || '[]'); }catch(e){ events = []; }
+  try{ customTags = JSON.parse(localStorage.getItem('nomi-tags') || '[]'); }catch(e){ customTags = []; }
+  maybeInsertSampleData();
   renderFilterTags();
   renderEntryList();
   renderStatsDuo();
 }
 
-async function saveEvents(){
-  try{ await window.storage.set('nomi-events', JSON.stringify(events), false); }
-  catch(e){ console.error('保存に失敗しました', e); alert('保存に失敗しました。もう一度お試しください。'); }
+function saveLocalEvents(){ localStorage.setItem('nomi-events', JSON.stringify(events)); }
+function saveLocalTags(){ localStorage.setItem('nomi-tags', JSON.stringify(customTags)); }
+
+async function upsertEventRemote(ev){
+  if(useFirebase){
+    try{ await fbRoot.child('events').child(ev.id).set(ev); }
+    catch(e){ console.error(e); alert('保存に失敗しました。通信状況やFirebase設定をご確認ください。'); }
+  } else {
+    const idx = events.findIndex(e2 => e2.id === ev.id);
+    if(idx >= 0) events[idx] = ev; else events.push(ev);
+    saveLocalEvents();
+    renderFilterTags(); renderEntryList(); renderStatsDuo();
+  }
 }
-async function saveCustomTags(){
-  try{ await window.storage.set('nomi-tags', JSON.stringify(customTags), false); }
-  catch(e){ console.error('タグの保存に失敗しました', e); }
+
+async function deleteEventRemote(id){
+  if(useFirebase){
+    try{ await fbRoot.child('events').child(id).remove(); }
+    catch(e){ console.error(e); alert('削除に失敗しました。通信状況をご確認ください。'); }
+  } else {
+    events = events.filter(e => e.id !== id);
+    saveLocalEvents();
+    renderFilterTags(); renderEntryList(); renderStatsDuo();
+  }
 }
+
+async function saveTagsRemote(){
+  if(useFirebase){
+    try{ await fbRoot.child('tags').set(customTags); }
+    catch(e){ console.error(e); }
+  } else {
+    saveLocalTags();
+    renderFilterTags();
+  }
+}
+
+async function clearAllRemote(){
+  if(useFirebase){
+    try{ await fbRoot.child('events').remove(); await fbRoot.child('tags').remove(); }
+    catch(e){ console.error(e); alert('削除に失敗しました。通信状況をご確認ください。'); }
+  } else {
+    events = []; customTags = [];
+    saveLocalEvents(); saveLocalTags();
+    renderFilterTags(); renderEntryList(); renderStatsDuo();
+  }
+}
+
+function maybeInsertSampleData(){
+  if(localStorage.getItem('nomi-sample-inserted')) return;
+  localStorage.setItem('nomi-sample-inserted', '1');
+  if(events.length > 0) return;
+  buildSampleEvents().forEach(ev => upsertEventRemote(ev));
+}
+
+function isoDaysAgo(n){
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0,10);
+}
+
+function buildSampleEvents(){
+  return [
+    {
+      id: 'sample_1',
+      title: '部内歓迎会',
+      datetime: isoDaysAgo(20),
+      round: '一次会',
+      cost: 4500,
+      shop: '串焼き 恵比寿マル',
+      address: '東京都渋谷区恵比寿1-2-3',
+      coords: { lat: 35.6467, lng: 139.7100 },
+      participants: ['田中','鈴木','佐藤','高橋'],
+      purpose: '新入社員の歓迎会',
+      tags: ['部内'],
+      photos: [],
+      notes: '盛り上がって良い雰囲気だった。次は違う店も試したい。',
+      ratings: { food: 4, drink: 3, cospa: 4, quiet: 2, mood: 5 },
+    },
+    {
+      id: 'sample_2',
+      title: '部内歓迎会 二次会',
+      datetime: isoDaysAgo(20),
+      round: '二次会',
+      cost: 2000,
+      shop: 'Bar Standard 恵比寿',
+      address: '東京都渋谷区恵比寿1-5-1',
+      coords: { lat: 35.6470, lng: 139.7105 },
+      participants: ['田中','鈴木'],
+      purpose: '新入社員の歓迎会（続き）',
+      tags: ['部内'],
+      photos: [],
+      notes: '少人数でゆっくり話せた。',
+      ratings: { food: 3, drink: 4, cospa: 3, quiet: 4, mood: 4 },
+    },
+    {
+      id: 'sample_3',
+      title: '取引先との懇親会',
+      datetime: isoDaysAgo(45),
+      round: '一次会',
+      cost: 8000,
+      shop: '個室居酒屋 月あかり 新橋店',
+      address: '東京都港区新橋2-1-1',
+      coords: { lat: 35.6666, lng: 139.7583 },
+      participants: ['山田様','中村様','伊藤'],
+      purpose: '案件の打ち上げ',
+      tags: ['社外'],
+      photos: [],
+      notes: '先方も満足そうだった。次回は違うお店を提案してみる。',
+      ratings: { food: 5, drink: 4, cospa: 3, quiet: 3, mood: 4 },
+    },
+  ];
+}
+
 
 function allTags(){
   const set = new Set(DEFAULT_TAGS);
@@ -486,13 +717,19 @@ function renderFilterTags(){
 }
 
 function formatDate(dtStr){
-  if(!dtStr) return '日時未設定';
-  const d = new Date(dtStr);
+  if(!dtStr) return '日付未設定';
+  const d = new Date(dtStr + 'T00:00:00');
   if(isNaN(d)) return dtStr;
   const w = ['日','月','火','水','木','金','土'][d.getDay()];
-  const hh = String(d.getHours()).padStart(2,'0');
-  const mm = String(d.getMinutes()).padStart(2,'0');
-  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}（${w}） ${hh}:${mm}`;
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}（${w}）`;
+}
+
+function avgRating(ev){
+  const r = ev.ratings;
+  if(!r) return null;
+  const vals = RATING_CATEGORIES.map(c => r[c.key]).filter(v => v > 0);
+  if(!vals.length) return null;
+  return (vals.reduce((a,b)=>a+b,0) / vals.length).toFixed(1);
 }
 
 function renderEntryList(){
@@ -534,6 +771,7 @@ function renderEntryList(){
           <span>👥 ${(ev.participants||[]).length}名</span>
           ${ev.purpose ? `<span>🎯 ${escapeHtml(ev.purpose)}</span>` : ''}
           ${ev.cost ? `<span>💴 ¥${Number(ev.cost).toLocaleString()}</span>` : ''}
+          ${avgRating(ev) ? `<span>⭐ ${avgRating(ev)}</span>` : ''}
           ${(ev.photos||[]).length ? `<span>📷 ${ev.photos.length}枚</span>` : ''}
         </div>
       </div>
@@ -583,12 +821,16 @@ function resetForm(){
   pendingPhotos = [];
   pendingCoords = null;
   pendingRound = '一次会';
+  pendingRatings = {};
   $('openMapsLink').style.display = 'none';
   $('coordNote').textContent = '';
+  $('mapBox').classList.remove('open');
+  $('mapHint').style.display = 'none';
   renderParticipantChips();
   renderTagPicker();
   renderPhotoGrid();
   renderRoundPicker();
+  renderRatingGroup();
 }
 
 function renderRoundPicker(){
@@ -597,6 +839,29 @@ function renderRoundPicker(){
 }
 $('round1Pill').onclick = () => { pendingRound = '一次会'; renderRoundPicker(); };
 $('round2Pill').onclick = () => { pendingRound = '二次会'; renderRoundPicker(); };
+
+function renderRatingGroup(){
+  const container = $('ratingGroup');
+  container.innerHTML = '';
+  RATING_CATEGORIES.forEach(cat => {
+    const val = pendingRatings[cat.key] || 0;
+    const row = document.createElement('div');
+    row.className = 'rating-group';
+    const starsHtml = [1,2,3,4,5].map(n =>
+      `<span class="star${n <= val ? ' filled' : ''}" data-cat="${cat.key}" data-n="${n}">★</span>`
+    ).join('');
+    row.innerHTML = `<div class="rating-row"><span class="rating-label">${cat.label}</span><span class="stars">${starsHtml}</span></div>`;
+    row.querySelectorAll('.star').forEach(star => {
+      star.onclick = () => {
+        const n = Number(star.dataset.n);
+        const key = star.dataset.cat;
+        pendingRatings[key] = (pendingRatings[key] === n) ? 0 : n; // tap same star again to clear
+        renderRatingGroup();
+      };
+    });
+    container.appendChild(row);
+  });
+}
 
 function openModal(id){
   resetForm();
@@ -617,7 +882,9 @@ function openModal(id){
     pendingPhotos = (ev.photos||[]).slice();
     pendingCoords = ev.coords || null;
     pendingRound = ev.round || '一次会';
+    pendingRatings = Object.assign({}, ev.ratings || {});
     updateMapsLink();
+    if(pendingCoords){ showMap(pendingCoords.lat, pendingCoords.lng); }
   } else {
     $('modalTitle').textContent = '新しい記録';
     $('deleteBtn').style.display = 'none';
@@ -626,7 +893,9 @@ function openModal(id){
   renderTagPicker();
   renderPhotoGrid();
   renderRoundPicker();
+  renderRatingGroup();
   $('modalOverlay').classList.add('open');
+  if(pendingCoords){ setTimeout(() => { if(leafletMap) leafletMap.invalidateSize(); }, 150); }
 }
 
 function closeModal(){
@@ -655,32 +924,21 @@ $('saveBtn').onclick = async () => {
     notes: $('f-notes').value.trim(),
     round: pendingRound,
     cost: $('f-cost').value ? Number($('f-cost').value) : null,
+    ratings: Object.assign({}, pendingRatings),
   };
-  if(editingId){
-    const idx = events.findIndex(e => e.id === editingId);
-    if(idx >= 0) events[idx] = ev;
-  } else {
-    events.push(ev);
-  }
   // persist any brand-new custom tags
-  ev.tags.forEach(t => { if(!DEFAULT_TAGS.includes(t) && !customTags.includes(t)) customTags.push(t); });
-  await saveEvents();
-  await saveCustomTags();
+  let tagsChanged = false;
+  ev.tags.forEach(t => { if(!DEFAULT_TAGS.includes(t) && !customTags.includes(t)){ customTags.push(t); tagsChanged = true; } });
+  await upsertEventRemote(ev);
+  if(tagsChanged) await saveTagsRemote();
   closeModal();
-  renderFilterTags();
-  renderEntryList();
-  renderStatsDuo();
 };
 
 $('deleteBtn').onclick = async () => {
   if(!editingId) return;
   if(!confirm('この記録を削除します。よろしいですか？')) return;
-  events = events.filter(e => e.id !== editingId);
-  await saveEvents();
+  await deleteEventRemote(editingId);
   closeModal();
-  renderFilterTags();
-  renderEntryList();
-  renderStatsDuo();
 };
 
 /* ---------- Location ---------- */
@@ -701,10 +959,38 @@ function updateMapsLink(){
   const link = $('openMapsLink');
   if(url){ link.href = url; link.style.display = 'inline-flex'; }
   else { link.style.display = 'none'; }
-  $('coordNote').textContent = pendingCoords ? `現在地の座標を取得済み（${pendingCoords.lat.toFixed(5)}, ${pendingCoords.lng.toFixed(5)}）` : '';
+  $('coordNote').textContent = pendingCoords ? `座標：${pendingCoords.lat.toFixed(5)}, ${pendingCoords.lng.toFixed(5)}（地図をドラッグして補正できます）` : '';
 }
 
 $('f-address').addEventListener('input', updateMapsLink);
+
+function showMap(lat, lng){
+  const box = $('mapBox');
+  box.classList.add('open');
+  $('mapHint').style.display = 'block';
+  if(!leafletMap){
+    leafletMap = L.map(box).setView([lat, lng], 17);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(leafletMap);
+    leafletMarker = L.marker([lat, lng], { draggable: true }).addTo(leafletMap);
+    leafletMarker.on('dragend', () => {
+      const pos = leafletMarker.getLatLng();
+      pendingCoords = { lat: pos.lat, lng: pos.lng };
+      updateMapsLink();
+    });
+    leafletMap.on('click', (e) => {
+      leafletMarker.setLatLng(e.latlng);
+      pendingCoords = { lat: e.latlng.lat, lng: e.latlng.lng };
+      updateMapsLink();
+    });
+  } else {
+    leafletMap.setView([lat, lng], 17);
+    leafletMarker.setLatLng([lat, lng]);
+  }
+  setTimeout(() => leafletMap.invalidateSize(), 100);
+}
 
 $('getLocBtn').onclick = () => {
   if(!navigator.geolocation){ alert('この端末では位置情報を取得できません'); return; }
@@ -713,6 +999,7 @@ $('getLocBtn').onclick = () => {
     (pos) => {
       pendingCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       updateMapsLink();
+      showMap(pendingCoords.lat, pendingCoords.lng);
     },
     (err) => {
       $('coordNote').textContent = '位置情報を取得できませんでした（許可設定をご確認ください）';
@@ -1034,7 +1321,61 @@ function renderSummary(){
   });
 }
 
-loadData();
+/* ---------- Data management (export / import / clear) ---------- */
+
+$('showDataPanelBtn').onclick = () => {
+  $('dataPanel').classList.toggle('open');
+};
+
+$('exportBtn').onclick = () => {
+  const payload = { events, tags: customTags, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `nomi-memo-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+$('importInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try{
+      const data = JSON.parse(reader.result);
+      const importedEvents = Array.isArray(data.events) ? data.events : (Array.isArray(data) ? data : []);
+      const importedTags = Array.isArray(data.tags) ? data.tags : [];
+      if(!importedEvents.length && !importedTags.length){
+        alert('有効な記録データが見つかりませんでした。');
+        return;
+      }
+      if(!confirm(`${importedEvents.length}件の記録をインポートします。同じIDの記録は上書きされます。よろしいですか？`)) return;
+      for(const ev of importedEvents){ await upsertEventRemote(ev); }
+      let tagsChanged = false;
+      importedTags.forEach(t => { if(!DEFAULT_TAGS.includes(t) && !customTags.includes(t)){ customTags.push(t); tagsChanged = true; } });
+      if(tagsChanged) await saveTagsRemote();
+      alert('インポートが完了しました。');
+    }catch(err){
+      console.error(err);
+      alert('インポートに失敗しました。正しいJSONファイルかご確認ください。');
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+  e.target.value = '';
+});
+
+$('clearBtn').onclick = async () => {
+  if(!confirm('すべての記録・タグを削除します。この操作は取り消せません。よろしいですか？')) return;
+  if(!confirm('本当に削除してよろしいですか？もう一度確認しています。')) return;
+  await clearAllRemote();
+  alert('全データを削除しました。');
+};
+
+initStorage();
 </script>
 </body>
 </html>
