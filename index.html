@@ -1498,23 +1498,14 @@ const secretTriggerEl = $('secretTrigger');
 secretTriggerEl.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   secretTriggerEl.classList.add('pressing');
-  if(!secretModeActive){
-    // 通常モード → シークレットモードは3秒長押しで有効化
-    secretPressTimer = setTimeout(() => {
-      toggleSecretMode();
-      secretTriggerEl.classList.remove('pressing');
-      secretPressTimer = null;
-    }, 3000);
-  }
+  // ON/OFFどちらも3秒長押しで切り替え（誤作動での解除を防ぐため）
+  secretPressTimer = setTimeout(() => {
+    toggleSecretMode();
+    secretTriggerEl.classList.remove('pressing');
+    secretPressTimer = null;
+  }, 3000);
 });
-secretTriggerEl.addEventListener('pointerup', () => {
-  if(secretModeActive){
-    // シークレットモード中はワンタップで即座に通常モードへ戻す
-    deactivateSecretMode();
-  }
-  cancelSecretPress();
-});
-['pointerleave','pointercancel'].forEach(evt => {
+['pointerup','pointerleave','pointercancel'].forEach(evt => {
   secretTriggerEl.addEventListener(evt, cancelSecretPress);
 });
 secretTriggerEl.addEventListener('contextmenu', (e) => e.preventDefault());
