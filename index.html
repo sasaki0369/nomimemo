@@ -159,6 +159,8 @@
   }
   .summary-table th{ color: var(--text-muted); font-weight:600; font-size:11px; }
   .summary-table tr:last-child td{ border-bottom:none; }
+  .summary-total-row td{ font-weight:700; background: var(--tag-bg); border-bottom: 1px solid var(--border-strong) !important; }
+  .summary-total-row .summary-tag-name{ color: var(--accent); }
   .summary-tag-name{ font-weight:700; }
   .summary-scroll{ overflow-x:auto; }
   .summary-empty{ text-align:center; padding:50px 20px; color: var(--text-muted); }
@@ -1242,6 +1244,8 @@ function renderSummary(){
 
   // monthKey -> tag -> { c1, c2, cost }
   const monthsMap = {};
+  // monthKey -> { c1, c2, cost } (event-based totals, no double counting across tags)
+  const monthTotals = {};
   dated.forEach(ev => {
     const d = new Date(ev.datetime);
     const monthKey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -1255,6 +1259,9 @@ function renderSummary(){
       if(round === '二次会') bucket.c2++; else bucket.c1++;
       bucket.cost += cost;
     });
+    if(!monthTotals[monthKey]) monthTotals[monthKey] = { c1:0, c2:0, cost:0 };
+    if(round === '二次会') monthTotals[monthKey].c2++; else monthTotals[monthKey].c1++;
+    monthTotals[monthKey].cost += cost;
   });
 
   const monthsAsc = Object.keys(monthsMap).sort();
@@ -1274,6 +1281,16 @@ function renderSummary(){
     });
   });
 
+  // cumulative overall-average tracker (across all months, for the 月合計 row)
+  let overallCumulative = { sum: 0, monthCount: 0 };
+  const monthlyAvgTotalLookup = {}; // monthKey -> value
+  monthsAsc.forEach(monthKey => {
+    const t = monthTotals[monthKey];
+    overallCumulative.sum += (t.c1 + t.c2);
+    overallCumulative.monthCount += 1;
+    monthlyAvgTotalLookup[monthKey] = overallCumulative.sum / overallCumulative.monthCount;
+  });
+
   const monthsDesc = monthsAsc.slice().reverse();
 
   container.innerHTML = '';
@@ -1281,6 +1298,18 @@ function renderSummary(){
     const tagData = monthsMap[monthKey];
     const weeksInMonth = daysInMonth(monthKey) / 7;
     const tagNames = Object.keys(tagData).sort((a,b) => (tagData[b].c1+tagData[b].c2) - (tagData[a].c1+tagData[a].c2));
+
+    const totals = monthTotals[monthKey];
+    const totalWeeklyAvg = ((totals.c1+totals.c2) / weeksInMonth).toFixed(1);
+    const totalMonthlyAvg = monthlyAvgTotalLookup[monthKey].toFixed(1);
+    const totalRow = `<tr class="summary-total-row">
+      <td class="summary-tag-name">月合計</td>
+      <td>${totals.c1}回</td>
+      <td>${totals.c2}回</td>
+      <td>¥${totals.cost.toLocaleString()}</td>
+      <td>${totalWeeklyAvg}回</td>
+      <td>${totalMonthlyAvg}回</td>
+    </tr>`;
 
     const rows = tagNames.map(tag => {
       const b = tagData[tag];
@@ -1313,7 +1342,7 @@ function renderSummary(){
               <th>月平均<br>(累計)</th>
             </tr>
           </thead>
-          <tbody>${rows}</tbody>
+          <tbody>${totalRow}${rows}</tbody>
         </table>
       </div>
     `;
