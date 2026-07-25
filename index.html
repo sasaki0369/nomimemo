@@ -429,6 +429,7 @@
           <tr><td>entertain_host</td><td>交際費として支払った場合は1</td></tr>
           <tr><td>entertain_guest</td><td>接待を受けた場合は1</td></tr>
           <tr><td>entertain_treat</td><td>奢った場合は1</td></tr>
+          <tr><td>secret</td><td>シークレット記録の場合は1</td></tr>
           <tr><td>rating_food / rating_drink / rating_cospa / rating_quiet / rating_mood</td><td>評価（1〜5の数値）</td></tr>
           <tr><td>notes</td><td>メモ</td></tr>
         </table>
@@ -1497,13 +1498,23 @@ const secretTriggerEl = $('secretTrigger');
 secretTriggerEl.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   secretTriggerEl.classList.add('pressing');
-  secretPressTimer = setTimeout(() => {
-    toggleSecretMode();
-    secretTriggerEl.classList.remove('pressing');
-    secretPressTimer = null;
-  }, 3000);
+  if(!secretModeActive){
+    // 通常モード → シークレットモードは3秒長押しで有効化
+    secretPressTimer = setTimeout(() => {
+      toggleSecretMode();
+      secretTriggerEl.classList.remove('pressing');
+      secretPressTimer = null;
+    }, 3000);
+  }
 });
-['pointerup','pointerleave','pointercancel'].forEach(evt => {
+secretTriggerEl.addEventListener('pointerup', () => {
+  if(secretModeActive){
+    // シークレットモード中はワンタップで即座に通常モードへ戻す
+    deactivateSecretMode();
+  }
+  cancelSecretPress();
+});
+['pointerleave','pointercancel'].forEach(evt => {
   secretTriggerEl.addEventListener(evt, cancelSecretPress);
 });
 secretTriggerEl.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1707,7 +1718,7 @@ $('importInput').addEventListener('change', (e) => {
 
 /* ---- CSV export / import ---- */
 
-const CSV_COLUMNS = ['id','title','date','round','shop','address','lat','lng','participants','purpose','tags','cost','entertain_host','entertain_guest','entertain_treat','rating_food','rating_drink','rating_cospa','rating_quiet','rating_mood','notes'];
+const CSV_COLUMNS = ['id','title','date','round','shop','address','lat','lng','participants','purpose','tags','cost','entertain_host','entertain_guest','entertain_treat','secret','rating_food','rating_drink','rating_cospa','rating_quiet','rating_mood','notes'];
 
 function csvEscape(field){
   const s = field == null ? '' : String(field);
@@ -1727,6 +1738,7 @@ function eventsToCsv(list){
       (ev.participants || []).join('｜'), ev.purpose || '', (ev.tags || []).join('｜'),
       ev.cost != null ? ev.cost : '',
       ev.entertainHost ? '1' : '', ev.entertainGuest ? '1' : '', ev.entertainTreat ? '1' : '',
+      ev.secret ? '1' : '',
       r.food || '', r.drink || '', r.cospa || '', r.quiet || '', r.mood || '',
       ev.notes || '',
     ].map(csvEscape).join(',');
@@ -1791,6 +1803,7 @@ function csvRowsToEvents(rows){
       entertainHost: ['1','true','TRUE','はい'].includes(get('entertain_host')),
       entertainGuest: ['1','true','TRUE','はい'].includes(get('entertain_guest')),
       entertainTreat: ['1','true','TRUE','はい'].includes(get('entertain_treat')),
+      secret: ['1','true','TRUE','はい'].includes(get('secret')),
       ratings: {
         food: Number(get('rating_food')) || 0,
         drink: Number(get('rating_drink')) || 0,
