@@ -72,6 +72,21 @@
 
   .icon{ width:1em; height:1em; display:inline-block; vertical-align:-0.15em; }
 
+  .secret-trigger{
+    display:inline-flex; cursor:pointer; user-select:none; -webkit-user-select:none;
+    touch-action:manipulation; border-radius:50%; padding:2px; transition: background 0.2s;
+  }
+  .secret-trigger svg{ transition: stroke 0.4s, opacity 0.4s; }
+  .secret-trigger.pressing svg{ stroke: var(--accent2); opacity:0.75; }
+  .secret-trigger.secret-active svg{ stroke: var(--accent2); }
+  .secret-trigger.secret-active{ background: var(--accent2-soft); }
+
+  .entry-card.secret-entry{ border-style:dashed; border-color: var(--accent2); }
+  .secret-flag-badge{
+    font-size:11px; font-weight:700; border-radius:999px; padding:3px 10px;
+    background: var(--accent2); color:#fffdf7;
+  }
+
   .toolbar{
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -152,6 +167,13 @@
     display:inline-flex; align-items:center; gap:6px; font-size:13px; color: var(--text-dark); cursor:pointer;
   }
   .checkbox-label input{ width:16px; height:16px; accent-color: var(--accent); cursor:pointer; }
+
+  .secret-toggle-btn{
+    flex-shrink:0; width:44px; border:1px solid var(--border-strong); border-radius: var(--radius-sm);
+    background:#fff; color: var(--text-muted); display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  .secret-toggle-btn.active{ background:#fbe9c6; border-color:#dcae3f; color:#8a6a1f; }
 
   .tag-pill.round-pill{ min-width:64px; text-align:center; justify-content:center; }
 
@@ -320,13 +342,15 @@
   <header class="app-header">
     <div>
       <h1>
-        <svg class="icon" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="var(--accent)" stroke-width="1.8">
-          <path d="M6 8h9v9a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V8z"/>
-          <path d="M15 10h1.5a2.5 2.5 0 0 1 0 5H15"/>
-          <path d="M6 8c-.5-2 .5-3 1-4.5" stroke-width="1.4"/>
-          <path d="M9 8c-.4-2.2.6-3.2 1-4.8" stroke-width="1.4"/>
-          <path d="M6.5 11h8" stroke-width="1.3" opacity="0.6"/>
-        </svg>
+        <span class="secret-trigger" id="secretTrigger">
+          <svg class="icon" viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="var(--accent)" stroke-width="1.8">
+            <path d="M6 8h9v9a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V8z"/>
+            <path d="M15 10h1.5a2.5 2.5 0 0 1 0 5H15"/>
+            <path d="M6 8c-.5-2 .5-3 1-4.5" stroke-width="1.4"/>
+            <path d="M9 8c-.4-2.2.6-3.2 1-4.8" stroke-width="1.4"/>
+            <path d="M6.5 11h8" stroke-width="1.3" opacity="0.6"/>
+          </svg>
+        </span>
         飲みメモ
       </h1>
       <p class="subtitle">飲み会の記録帳 &mdash; 誰と、どこで、なぜ飲んだか</p>
@@ -461,7 +485,15 @@
 
       <div class="field">
         <label class="field-label">タイトル</label>
-        <input type="text" id="f-title" placeholder="例）第3四半期 部内懇親会">
+        <div class="row-inline" style="align-items:stretch;">
+          <input type="text" id="f-title" placeholder="例）第3四半期 部内懇親会" style="flex:1; min-width:160px;">
+          <button type="button" class="secret-toggle-btn" id="secretToggleBtn" title="シークレット記録にする">
+            <svg class="icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="5" y="11" width="14" height="9" rx="2"/>
+              <path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div class="field">
@@ -632,9 +664,15 @@ let pendingPhotos = [];
 let pendingCoords = null; // {lat, lng}
 let pendingRound = '一次会';
 let pendingRatings = {};
+let pendingSecret = false;
 
 let weeklySettings = null;
 let weekOffset = -1; // -1 = 前週（実際の今日を含む週の一つ前）
+
+let secretModeActive = false;
+function visibleEvents(){
+  return secretModeActive ? events : events.filter(ev => !ev.secret);
+}
 const REPORT_CATEGORIES = [
   { label: '部内　', tag: '部内' },
   { label: '本社内', tag: '本社内' },
@@ -868,7 +906,7 @@ function buildSampleEvents(){
 function allTags(){
   const set = new Set(DEFAULT_TAGS);
   customTags.forEach(t => set.add(t));
-  events.forEach(ev => (ev.tags||[]).forEach(t => set.add(t)));
+  visibleEvents().forEach(ev => (ev.tags||[]).forEach(t => set.add(t)));
   return Array.from(set);
 }
 
@@ -906,7 +944,8 @@ function avgRating(ev){
 
 function renderEntryList(){
   const list = $('entryList');
-  let filtered = events.slice();
+  const visible = visibleEvents();
+  let filtered = visible.slice();
   if(activeFilters.size){
     filtered = filtered.filter(ev => (ev.tags||[]).some(t => activeFilters.has(t)));
   }
@@ -915,7 +954,7 @@ function renderEntryList(){
   if(!filtered.length){
     list.innerHTML = `<div class="empty-state">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2h5l1 4H5l1-4z"/><path d="M5 6h7l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6z"/></svg>
-      <div>${events.length ? 'この条件に合う記録はありません' : 'まだ記録がありません。最初の一件を追加しましょう'}</div>
+      <div>${visible.length ? 'この条件に合う記録はありません' : 'まだ記録がありません。最初の一件を追加しましょう'}</div>
     </div>`;
     return;
   }
@@ -923,7 +962,7 @@ function renderEntryList(){
   list.innerHTML = '';
   filtered.forEach(ev => {
     const card = document.createElement('div');
-    card.className = 'entry-card';
+    card.className = 'entry-card' + (ev.secret ? ' secret-entry' : '');
     const thumb = (ev.photos && ev.photos.length)
       ? `<img class="entry-thumb" src="${ev.photos[0]}">`
       : `<div class="entry-thumb-placeholder"><svg class="icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10.5" r="1.5"/><path d="M21 16l-5-4-9 7"/></svg></div>`;
@@ -931,6 +970,7 @@ function renderEntryList(){
     const round = ev.round || '一次会';
     const roundBadge = `<span class="round-badge${round === '二次会' ? ' r2' : ''}">${round}</span>`;
     const entertainBadges = `${ev.entertainHost ? '<span class="entertain-badge">交際費</span>' : ''}${ev.entertainGuest ? '<span class="entertain-badge guest">接待受</span>' : ''}${ev.entertainTreat ? '<span class="entertain-badge treat">奢り</span>' : ''}`;
+    const secretBadge = ev.secret ? '<span class="secret-flag-badge">🔒 シークレット</span>' : '';
     card.innerHTML = `
       ${thumb}
       <div class="entry-main">
@@ -939,7 +979,7 @@ function renderEntryList(){
           <span class="entry-date">${formatDate(ev.datetime)}</span>
         </div>
         <p class="entry-shop">${escapeHtml(ev.shop || '')}${ev.address ? ' ・ ' + escapeHtml(ev.address) : ''}</p>
-        <div class="entry-tags">${tagsHtml}${entertainBadges}</div>
+        <div class="entry-tags">${tagsHtml}${entertainBadges}${secretBadge}</div>
         <div class="entry-meta">
           <span>👥 ${(ev.participants||[]).length}名</span>
           ${ev.purpose ? `<span>🎯 ${escapeHtml(ev.purpose)}</span>` : ''}
@@ -998,6 +1038,8 @@ function resetForm(){
   pendingCoords = null;
   pendingRound = '一次会';
   pendingRatings = {};
+  pendingSecret = false;
+  renderSecretToggle();
   $('openMapsLink').style.display = 'none';
   $('coordNote').textContent = '';
   $('mapBox').classList.remove('open');
@@ -1015,6 +1057,11 @@ function renderRoundPicker(){
 }
 $('round1Pill').onclick = () => { pendingRound = '一次会'; renderRoundPicker(); };
 $('round2Pill').onclick = () => { pendingRound = '二次会'; renderRoundPicker(); };
+
+function renderSecretToggle(){
+  $('secretToggleBtn').classList.toggle('active', pendingSecret);
+}
+$('secretToggleBtn').onclick = () => { pendingSecret = !pendingSecret; renderSecretToggle(); };
 
 function renderRatingGroup(){
   const container = $('ratingGroup');
@@ -1056,6 +1103,8 @@ function openModal(id){
     $('f-entertain-host').checked = !!ev.entertainHost;
     $('f-entertain-guest').checked = !!ev.entertainGuest;
     $('f-entertain-treat').checked = !!ev.entertainTreat;
+    pendingSecret = !!ev.secret;
+    renderSecretToggle();
     pendingParticipants = (ev.participants||[]).slice();
     pendingTags = new Set(ev.tags||[]);
     pendingPhotos = (ev.photos||[]).slice();
@@ -1107,6 +1156,7 @@ $('saveBtn').onclick = async () => {
     entertainHost: $('f-entertain-host').checked,
     entertainGuest: $('f-entertain-guest').checked,
     entertainTreat: $('f-entertain-treat').checked,
+    secret: pendingSecret,
   };
   // persist any brand-new custom tags
   let tagsChanged = false;
@@ -1410,6 +1460,59 @@ function switchTab(tab){
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = () => switchTab(btn.dataset.tab);
 });
+
+/* ---------- Secret mode (シークレットモード) ---------- */
+
+let secretPressTimer = null;
+
+function refreshAfterSecretToggle(){
+  renderFilterTags();
+  renderEntryList();
+  renderStatsDuo();
+  const activeTab = document.querySelector('.tab-btn.active');
+  const currentTab = activeTab ? activeTab.dataset.tab : 'list';
+  if(currentTab === 'summary') renderSummary();
+  if(currentTab === 'weekly') renderWeeklyReport();
+}
+
+function toggleSecretMode(){
+  secretModeActive = !secretModeActive;
+  $('secretTrigger').classList.toggle('secret-active', secretModeActive);
+  refreshAfterSecretToggle();
+}
+
+function deactivateSecretMode(){
+  if(!secretModeActive) return;
+  secretModeActive = false;
+  $('secretTrigger').classList.remove('secret-active');
+  refreshAfterSecretToggle();
+}
+
+function cancelSecretPress(){
+  $('secretTrigger').classList.remove('pressing');
+  if(secretPressTimer){ clearTimeout(secretPressTimer); secretPressTimer = null; }
+}
+
+const secretTriggerEl = $('secretTrigger');
+secretTriggerEl.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  secretTriggerEl.classList.add('pressing');
+  secretPressTimer = setTimeout(() => {
+    toggleSecretMode();
+    secretTriggerEl.classList.remove('pressing');
+    secretPressTimer = null;
+  }, 3000);
+});
+['pointerup','pointerleave','pointercancel'].forEach(evt => {
+  secretTriggerEl.addEventListener(evt, cancelSecretPress);
+});
+secretTriggerEl.addEventListener('contextmenu', (e) => e.preventDefault());
+
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden) deactivateSecretMode();
+});
+window.addEventListener('pagehide', deactivateSecretMode);
+window.addEventListener('blur', deactivateSecretMode);
 
 /* ---------- Summary (集計) ---------- */
 
