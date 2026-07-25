@@ -147,6 +147,24 @@
   .view-toggle-row{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
   .summary-back{ display:inline-flex; align-items:center; gap:6px; }
 
+  .tab-bar{
+    display:flex; gap:4px; background: var(--tag-bg); border-radius: 999px; padding:4px;
+    margin-bottom:20px; box-shadow: var(--shadow);
+  }
+  .tab-btn{
+    flex:1; border:none; background:transparent; color: var(--text-muted); font-weight:700;
+    font-size:14px; padding:10px 8px; border-radius:999px; cursor:pointer;
+  }
+  .tab-btn.active{ background:#fffdf7; color: var(--accent); box-shadow: 0 1px 4px rgba(74,60,40,0.12); }
+
+  .weekly-preview{
+    background: var(--bg-card); border:1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 14px 16px; font-size:13px; line-height:1.7; white-space:pre-wrap; word-break:break-word;
+    font-family: "SF Mono", "Menlo", "Consolas", monospace; margin-bottom:18px; box-shadow: var(--shadow);
+  }
+  .year-input{ width:60px; border:1px solid var(--border-strong); border-radius:6px; padding:4px 6px; font-size:12px; text-align:center; }
+  .avg-input{ width:56px; border:1px solid var(--border-strong); border-radius:6px; padding:4px 6px; font-size:12px; text-align:right; }
+
   .summary-month{
     background: var(--bg-card); border:1px solid var(--border); border-radius: var(--radius);
     padding: 16px 18px; margin-bottom: 16px; box-shadow: var(--shadow);
@@ -307,16 +325,18 @@
 
   <div class="fb-banner" id="fbBanner"></div>
 
-  <div id="listView">
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="list">記録</button>
+    <button class="tab-btn" data-tab="summary">集計</button>
+    <button class="tab-btn" data-tab="weekly">週報</button>
+  </div>
+
+  <div id="listView" class="tab-panel">
     <div class="toolbar">
       <div class="toolbar-top">
         <button class="btn-primary" id="addBtn">
           <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
           新しい記録を追加
-        </button>
-        <button class="btn-secondary" id="showSummaryBtn">
-          <svg class="icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V10M12 19V5M20 19v-6"/></svg>
-          集計を見る
         </button>
         <button class="btn-secondary" id="showDataPanelBtn">
           <svg class="icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.64 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.64a1.7 1.7 0 0 0 1-1.55V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.36 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/></svg>
@@ -343,15 +363,38 @@
     <div id="entryList"></div>
   </div>
 
-  <div id="summaryView" style="display:none;">
+  <div id="summaryView" class="tab-panel" style="display:none;">
     <div class="view-toggle-row">
-      <button class="btn-secondary summary-back" id="backToListBtn">
-        <svg class="icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-        記録一覧に戻る
-      </button>
       <span class="hint">月ごと・タグごとの集計です（日時が未設定の記録は含まれません）</span>
     </div>
     <div id="summaryContent"></div>
+  </div>
+
+  <div id="weeklyView" class="tab-panel" style="display:none;">
+    <div class="toolbar">
+      <div class="toolbar-top">
+        <button class="btn-secondary" id="weekPrevBtn">← 前の週</button>
+        <span class="hint" id="weekRangeLabel">対象週：-</span>
+        <button class="btn-secondary" id="weekNextBtn">次の週 →</button>
+      </div>
+    </div>
+    <button class="btn-primary" id="copyWeeklyBtn" style="width:100%; justify-content:center; margin-bottom:14px;">
+      <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      コピーする
+    </button>
+    <pre class="weekly-preview" id="weeklyPreview"></pre>
+
+    <div class="data-panel open" id="weeklySettingsPanel">
+      <h3>週報の設定</h3>
+      <div class="field">
+        <label class="field-label">累計開始日</label>
+        <input type="date" id="cumulativeStartInput">
+      </div>
+      <div class="summary-scroll">
+        <table class="summary-table" id="yearAvgTable"></table>
+      </div>
+      <div class="hint">各分類の比較年平均（週あたりの平均回数）は、過去の実績をご自身で入力してください。</div>
+    </div>
   </div>
 </div>
 
@@ -523,6 +566,17 @@ let pendingCoords = null; // {lat, lng}
 let pendingRound = '一次会';
 let pendingRatings = {};
 
+let weeklySettings = null;
+let weekOffset = -1; // -1 = 前週（実際の今日を含む週の一つ前）
+const REPORT_CATEGORIES = [
+  { label: '部内　', tag: '部内' },
+  { label: '本社内', tag: '本社内' },
+  { label: '社内　', tag: '社内' },
+  { label: 'Ｇ内　', tag: 'グループ内' },
+  { label: 'ＯＢ等', tag: 'OB等' },
+  { label: '社外　', tag: '社外' },
+];
+
 let useFirebase = false;
 let fbRoot = null;
 let leafletMap = null;
@@ -552,6 +606,7 @@ function initStorage(){
         renderFilterTags();
         renderEntryList();
         renderStatsDuo();
+  if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
       }, (err) => {
         console.error(err);
         showFbBanner('Firebaseからの読み込みに失敗しました。Firebase設定やセキュリティルールをご確認ください。', true);
@@ -560,15 +615,60 @@ function initStorage(){
         customTags = snap.val() || [];
         renderFilterTags();
       });
+      fbRoot.child('weeklySettings').on('value', (snap) => {
+        const val = snap.val();
+        weeklySettings = val || defaultWeeklySettings();
+        ensureSettingsShape();
+        renderWeeklySettingsUI();
+        renderWeeklyReport();
+      });
     }catch(e){
       console.error(e);
       useFirebase = false;
       showFbBanner('⚠️ Firebaseへの接続に失敗しました。この端末にのみ保存されます。', true);
       loadLocal();
+      loadWeeklySettingsLocal();
     }
   } else {
     showFbBanner('⚠️ Firebase未設定のため、この端末にのみ保存されます。複数端末で同期するには、HTML内のFIREBASE_CONFIGを書き換えてください。', true);
     loadLocal();
+    loadWeeklySettingsLocal();
+  }
+}
+
+function defaultWeeklySettings(){
+  const y = new Date().getFullYear();
+  return {
+    cumulativeStart: `${y}-04-01`,
+    year1: y - 2,
+    year2: y - 1,
+    averages: Object.fromEntries(REPORT_CATEGORIES.map(c => [c.tag, { y1: 0, y2: 0 }])),
+  };
+}
+
+function ensureSettingsShape(){
+  if(!weeklySettings) weeklySettings = defaultWeeklySettings();
+  if(!weeklySettings.averages) weeklySettings.averages = {};
+  REPORT_CATEGORIES.forEach(c => { if(!weeklySettings.averages[c.tag]) weeklySettings.averages[c.tag] = { y1: 0, y2: 0 }; });
+  if(weeklySettings.year1 == null) weeklySettings.year1 = new Date().getFullYear() - 2;
+  if(weeklySettings.year2 == null) weeklySettings.year2 = new Date().getFullYear() - 1;
+  if(!weeklySettings.cumulativeStart) weeklySettings.cumulativeStart = `${new Date().getFullYear()}-04-01`;
+}
+
+function loadWeeklySettingsLocal(){
+  try{ weeklySettings = JSON.parse(localStorage.getItem('nomi-weekly-settings') || 'null') || defaultWeeklySettings(); }
+  catch(e){ weeklySettings = defaultWeeklySettings(); }
+  ensureSettingsShape();
+  renderWeeklySettingsUI();
+  renderWeeklyReport();
+}
+
+async function saveWeeklySettings(){
+  if(useFirebase){
+    try{ await fbRoot.child('weeklySettings').set(weeklySettings); }
+    catch(e){ console.error(e); }
+  } else {
+    localStorage.setItem('nomi-weekly-settings', JSON.stringify(weeklySettings));
   }
 }
 
@@ -579,6 +679,7 @@ function loadLocal(){
   renderFilterTags();
   renderEntryList();
   renderStatsDuo();
+  if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
 }
 
 function saveLocalEvents(){ localStorage.setItem('nomi-events', JSON.stringify(events)); }
@@ -593,6 +694,7 @@ async function upsertEventRemote(ev){
     if(idx >= 0) events[idx] = ev; else events.push(ev);
     saveLocalEvents();
     renderFilterTags(); renderEntryList(); renderStatsDuo();
+  if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
   }
 }
 
@@ -604,6 +706,7 @@ async function deleteEventRemote(id){
     events = events.filter(e => e.id !== id);
     saveLocalEvents();
     renderFilterTags(); renderEntryList(); renderStatsDuo();
+  if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
   }
 }
 
@@ -625,6 +728,7 @@ async function clearAllRemote(){
     events = []; customTags = [];
     saveLocalEvents(); saveLocalTags();
     renderFilterTags(); renderEntryList(); renderStatsDuo();
+  if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
   }
 }
 
@@ -1212,17 +1316,26 @@ function openLightbox(src){
 }
 $('lightbox').onclick = () => $('lightbox').classList.remove('open');
 
-/* ---------- Summary (集計) ---------- */
+/* ---------- Tabs ---------- */
 
-$('showSummaryBtn').onclick = () => {
-  $('listView').style.display = 'none';
-  $('summaryView').style.display = 'block';
-  renderSummary();
-};
-$('backToListBtn').onclick = () => {
-  $('summaryView').style.display = 'none';
-  $('listView').style.display = 'block';
-};
+const TAB_PANELS = { list: 'listView', summary: 'summaryView', weekly: 'weeklyView' };
+
+function switchTab(tab){
+  Object.keys(TAB_PANELS).forEach(key => {
+    $(TAB_PANELS[key]).style.display = (key === tab) ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  if(tab === 'summary') renderSummary();
+  if(tab === 'weekly') renderWeeklyReport();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => switchTab(btn.dataset.tab);
+});
+
+/* ---------- Summary (集計) ---------- */
 
 function daysInMonth(monthKey){
   const [y, m] = monthKey.split('-').map(Number);
@@ -1403,6 +1516,136 @@ $('clearBtn').onclick = async () => {
   await clearAllRemote();
   alert('全データを削除しました。');
 };
+
+/* ---------- Weekly report (週報) ---------- */
+
+function mondayOf(date){
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0,0,0,0);
+  return d;
+}
+function addDays(date, n){ const d = new Date(date); d.setDate(d.getDate()+n); return d; }
+function fmtYMD(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+function getWeekBounds(offset){
+  const baseMonday = mondayOf(new Date());
+  const start = addDays(baseMonday, offset*7);
+  const end = addDays(start, 6);
+  return { start, end };
+}
+
+function countEventsInRange(tag, startYMD, endYMD){
+  return events.filter(ev => ev.datetime && ev.datetime >= startYMD && ev.datetime <= endYMD && (ev.tags||[]).includes(tag)).length;
+}
+
+$('weekPrevBtn').onclick = () => { weekOffset -= 1; renderWeeklyReport(); };
+$('weekNextBtn').onclick = () => { weekOffset += 1; renderWeeklyReport(); };
+
+function renderWeeklyReport(){
+  if(!weeklySettings) return;
+  const { start: targetStart, end: targetEnd } = getWeekBounds(weekOffset);
+  const nextStart = addDays(targetEnd, 1);
+  const nextEnd = addDays(targetEnd, 7);
+  const targetStartYMD = fmtYMD(targetStart), targetEndYMD = fmtYMD(targetEnd);
+  const nextStartYMD = fmtYMD(nextStart), nextEndYMD = fmtYMD(nextEnd);
+  const cumStart = weeklySettings.cumulativeStart || `${new Date().getFullYear()}-04-01`;
+
+  $('weekRangeLabel').textContent = `対象週：${targetStartYMD} 〜 ${targetEndYMD}`;
+
+  let totalCount = 0, totalCum = 0, totalNext = 0, totalY1 = 0, totalY2 = 0;
+  const lines = REPORT_CATEGORIES.map(cat => {
+    const count = countEventsInRange(cat.tag, targetStartYMD, targetEndYMD);
+    const cum = countEventsInRange(cat.tag, cumStart, targetEndYMD);
+    const next = countEventsInRange(cat.tag, nextStartYMD, nextEndYMD);
+    const avg = weeklySettings.averages[cat.tag] || { y1: 0, y2: 0 };
+    totalCount += count; totalCum += cum; totalNext += next;
+    totalY1 += Number(avg.y1) || 0; totalY2 += Number(avg.y2) || 0;
+    return `${cat.label}：${count}[${cum}](${next})【${(Number(avg.y1)||0).toFixed(1)},${(Number(avg.y2)||0).toFixed(1)}】`;
+  });
+  lines.push(`合計　：${totalCount}[${totalCum}](${totalNext})【${totalY1.toFixed(1)},${totalY2.toFixed(1)}】`);
+
+  const cumYear = cumStart.slice(0,4);
+  const cumMonth = Number(cumStart.slice(5,7));
+  const header = `■前週の飲み（[]内は${cumYear}.${cumMonth}からの累計、()内は今週の予定,【】内は${weeklySettings.year1}平均,${weeklySettings.year2}平均）`;
+  $('weeklyPreview').textContent = [header, ...lines].join('\n');
+}
+
+$('copyWeeklyBtn').addEventListener('click', async () => {
+  const text = $('weeklyPreview').textContent;
+  const btn = $('copyWeeklyBtn');
+  const originalHtml = btn.innerHTML;
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    btn.textContent = '✅ コピーしました';
+    setTimeout(() => { btn.innerHTML = originalHtml; }, 1600);
+  }catch(e){
+    console.error(e);
+    alert('コピーに失敗しました。プレビューのテキストを手動で選択してコピーしてください。');
+  }
+});
+
+function renderWeeklySettingsUI(){
+  if(!weeklySettings) return;
+  $('cumulativeStartInput').value = weeklySettings.cumulativeStart;
+  const table = $('yearAvgTable');
+  const rows = REPORT_CATEGORIES.map(cat => {
+    const a = weeklySettings.averages[cat.tag] || { y1: 0, y2: 0 };
+    return `<tr>
+      <td class="summary-tag-name">${escapeHtml(cat.label.trim())}</td>
+      <td><input type="number" step="0.1" class="avg-input" data-tag="${cat.tag}" data-field="y1" value="${a.y1}"></td>
+      <td><input type="number" step="0.1" class="avg-input" data-tag="${cat.tag}" data-field="y2" value="${a.y2}"></td>
+    </tr>`;
+  }).join('');
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>分類</th>
+        <th><input type="number" class="year-input" id="year1Input" value="${weeklySettings.year1}">平均</th>
+        <th><input type="number" class="year-input" id="year2Input" value="${weeklySettings.year2}">平均</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  `;
+  table.querySelectorAll('.avg-input').forEach(inp => {
+    inp.onchange = async () => {
+      const tag = inp.dataset.tag, field = inp.dataset.field;
+      weeklySettings.averages[tag][field] = Number(inp.value) || 0;
+      await saveWeeklySettings();
+      renderWeeklyReport();
+    };
+  });
+  $('year1Input').onchange = async (e) => {
+    weeklySettings.year1 = Number(e.target.value) || weeklySettings.year1;
+    await saveWeeklySettings();
+    renderWeeklyReport();
+  };
+  $('year2Input').onchange = async (e) => {
+    weeklySettings.year2 = Number(e.target.value) || weeklySettings.year2;
+    await saveWeeklySettings();
+    renderWeeklyReport();
+  };
+}
+
+$('cumulativeStartInput').addEventListener('change', async (e) => {
+  weeklySettings.cumulativeStart = e.target.value;
+  await saveWeeklySettings();
+  renderWeeklyReport();
+});
 
 initStorage();
 </script>
