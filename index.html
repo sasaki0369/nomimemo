@@ -317,6 +317,14 @@
   .format-table td{ padding:4px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
   .format-table td:first-child{ font-family: "SF Mono","Menlo","Consolas",monospace; white-space:nowrap; color: var(--accent); font-weight:600; }
 
+  .tag-manage-section{ border-top:1px solid var(--border); padding-top:10px; margin-top:10px; }
+  .tag-manage-row{ display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+  .tag-manage-row input{
+    flex:1; min-width:100px; border:1px solid var(--border-strong); border-radius: var(--radius-sm);
+    padding:7px 10px; font-size:13px; background:#fff; color: var(--text-dark);
+  }
+  .tag-manage-empty{ font-size:12px; color: var(--text-muted); }
+
   .fb-banner{
     font-size:12px; padding:8px 14px; border-radius: var(--radius-sm); margin-bottom:14px;
     background: var(--accent2-soft); color: var(--accent2); display:none;
@@ -409,6 +417,12 @@
         <button class="btn-danger" id="clearBtn">🗑 全データを消去</button>
       </div>
       <div class="hint">エクスポートは端末にファイルとして保存します。インポートは既存データに追加・上書き（同じIDは上書き）されます。</div>
+
+      <div class="tag-manage-section">
+        <h3 style="margin-top:14px;">タグ管理</h3>
+        <div class="hint">自由入力で追加したタグの名前を修正・削除できます（部内・本社内・社内・グループ内・OB等・社外・その他の初期タグは変更できません）。</div>
+        <div id="tagManageList"></div>
+      </div>
 
       <details class="format-help">
         <summary>データ形式について</summary>
@@ -938,6 +952,77 @@ function renderFilterTags(){
     container.appendChild(pill);
   });
   $('filterHint').style.display = allTags().length ? 'none' : 'inline';
+  renderTagManageList();
+}
+
+function renderTagManageList(){
+  const container = $('tagManageList');
+  if(!container) return;
+  if(!customTags.length){
+    container.innerHTML = '<div class="tag-manage-empty">まだ自由入力のタグはありません。</div>';
+    return;
+  }
+  container.innerHTML = '';
+  customTags.forEach(tag => {
+    const row = document.createElement('div');
+    row.className = 'tag-manage-row';
+    row.innerHTML = `
+      <input type="text" value="${escapeHtml(tag)}">
+      <button type="button" class="btn-secondary tag-save-btn">保存</button>
+      <button type="button" class="btn-danger tag-delete-btn">削除</button>
+    `;
+    const input = row.querySelector('input');
+    row.querySelector('.tag-save-btn').onclick = async () => {
+      const newName = input.value.trim();
+      if(!newName || newName === tag) return;
+      if(DEFAULT_TAGS.includes(newName) || (customTags.includes(newName) && newName !== tag)){
+        if(!confirm(`「${newName}」という既存のタグに統合します。よろしいですか？`)) return;
+      }
+      await renameTag(tag, newName);
+    };
+    row.querySelector('.tag-delete-btn').onclick = async () => {
+      if(!confirm(`タグ「${tag}」を削除します。このタグが付いている記録からも削除されます。よろしいですか？`)) return;
+      await deleteTag(tag);
+    };
+    container.appendChild(row);
+  });
+}
+
+async function refreshAllViews(){
+  renderFilterTags();
+  renderEntryList();
+  renderStatsDuo();
+  const activeTab = document.querySelector('.tab-btn.active');
+  const currentTab = activeTab ? activeTab.dataset.tab : 'list';
+  if(currentTab === 'summary') renderSummary();
+  if(currentTab === 'weekly') renderWeeklyReport();
+}
+
+async function renameTag(oldName, newName){
+  const idx = customTags.indexOf(oldName);
+  if(idx >= 0) customTags.splice(idx, 1);
+  if(!customTags.includes(newName) && !DEFAULT_TAGS.includes(newName)) customTags.push(newName);
+  await saveTagsRemote();
+  const affected = events.filter(ev => (ev.tags||[]).includes(oldName));
+  for(const ev of affected){
+    const newTags = Array.from(new Set((ev.tags||[]).map(t => t === oldName ? newName : t)));
+    await upsertEventRemote(Object.assign({}, ev, { tags: newTags }));
+  }
+  activeFilters.delete(oldName);
+  await refreshAllViews();
+}
+
+async function deleteTag(tagName){
+  const idx = customTags.indexOf(tagName);
+  if(idx >= 0) customTags.splice(idx, 1);
+  await saveTagsRemote();
+  const affected = events.filter(ev => (ev.tags||[]).includes(tagName));
+  for(const ev of affected){
+    const newTags = (ev.tags||[]).filter(t => t !== tagName);
+    await upsertEventRemote(Object.assign({}, ev, { tags: newTags }));
+  }
+  activeFilters.delete(tagName);
+  await refreshAllViews();
 }
 
 function formatDate(dtStr){
@@ -1543,6 +1628,66 @@ function monthLabel(monthKey){
   return `${y}年${m}月`;
 }
 
+function sundayOf(date){
+  const d = new Date(date);
+  d.setDate(d.getDate() - d.getDay());
+  d.setHours(0,0,0,0);
+  return d;
+}
+function fmtMD(d){ return `${d.getMonth()+1}/${d.getDate()}`; }
+
+function buildCrosstab(list, groupKeyFn){
+  const groups = {};
+  list.forEach(ev => {
+    const d = new Date(ev.datetime + 'T00:00:00');
+    const key = groupKeyFn(d);
+    if(!groups[key]) groups[key] = { counts: {}, ids: new Set() };
+    groups[key].ids.add(ev.id);
+    const evTags = (ev.tags && ev.tags.length) ? ev.tags : ['（タグなし）'];
+    evTags.forEach(tag => {
+      groups[key].counts[tag] = (groups[key].counts[tag] || 0) + 1;
+    });
+  });
+  const usedTags = allTags().filter(tag => Object.keys(groups).some(k => groups[k].counts[tag]));
+  const untaggedUsed = Object.keys(groups).some(k => groups[k].counts['（タグなし）']);
+  if(untaggedUsed) usedTags.push('（タグなし）');
+  return { groups, usedTags };
+}
+
+function renderCrosstabTable(title, keysDesc, labelFn, groups, usedTags){
+  if(!keysDesc.length){
+    return `<div class="summary-month"><h3>${title}</h3><div class="summary-empty" style="padding:20px;">データがありません</div></div>`;
+  }
+  const colTotals = {};
+  usedTags.forEach(t => colTotals[t] = 0);
+  let grandTotal = 0;
+  const bodyRows = keysDesc.map(key => {
+    const g = groups[key];
+    const cells = usedTags.map(tag => {
+      const n = g.counts[tag] || 0;
+      colTotals[tag] += n;
+      return `<td>${n || '−'}</td>`;
+    }).join('');
+    const rowTotal = g.ids.size;
+    grandTotal += rowTotal;
+    return `<tr><td class="summary-tag-name">${escapeHtml(labelFn(key))}</td>${cells}<td style="font-weight:700;">${rowTotal}</td></tr>`;
+  }).join('');
+  const totalCells = usedTags.map(tag => `<td style="font-weight:700;">${colTotals[tag] || '−'}</td>`).join('');
+  const totalRow = `<tr class="summary-total-row"><td class="summary-tag-name">合計</td>${totalCells}<td>${grandTotal}</td></tr>`;
+  const headerCells = usedTags.map(t => `<th>${escapeHtml(t)}</th>`).join('');
+  return `
+    <div class="summary-month">
+      <h3>${title}</h3>
+      <div class="summary-scroll">
+        <table class="summary-table">
+          <thead><tr><th></th>${headerCells}<th>合計</th></tr></thead>
+          <tbody>${bodyRows}${totalRow}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 function renderSummary(){
   const container = $('summaryContent');
   const dated = events.filter(ev => ev.datetime && !isNaN(new Date(ev.datetime + 'T00:00:00')));
@@ -1551,6 +1696,28 @@ function renderSummary(){
     container.innerHTML = `<div class="summary-empty">日時が設定された記録がまだありません。</div>`;
     return;
   }
+
+  container.innerHTML = '';
+
+  // --- クロス集計1: 月別 × タグ（一次会のみ） ---
+  const ichijiList = dated.filter(ev => (ev.round || '一次会') === '一次会');
+  const monthCrosstab = buildCrosstab(ichijiList, d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  const monthKeysDesc = Object.keys(monthCrosstab.groups).sort().reverse();
+  container.insertAdjacentHTML('beforeend', renderCrosstabTable(
+    '月別（一次会のみ）', monthKeysDesc, monthLabel, monthCrosstab.groups, monthCrosstab.usedTags
+  ));
+
+  // --- クロス集計2: 週別（日〜土） × タグ（一次会のみ） ---
+  const weekCrosstab = buildCrosstab(ichijiList, d => fmtYMD(sundayOf(d)));
+  const weekKeysDesc = Object.keys(weekCrosstab.groups).sort().reverse();
+  const weekLabelFn = (key) => {
+    const start = new Date(key + 'T00:00:00');
+    const end = addDays(start, 6);
+    return `${fmtMD(start)}〜${fmtMD(end)}`;
+  };
+  container.insertAdjacentHTML('beforeend', renderCrosstabTable(
+    '週別（一次会のみ）', weekKeysDesc, weekLabelFn, weekCrosstab.groups, weekCrosstab.usedTags
+  ));
 
   // monthKey -> tag -> { c1, c2, cost, costDays, pcSum, pcCount }
   const monthsMap = {};
@@ -1596,41 +1763,40 @@ function renderSummary(){
 
   const monthsAsc = Object.keys(monthsMap).sort();
 
-  // cumulative monthly-average tracker per tag (average across months the tag has appeared in, so far)
+  // cumulative monthly-average tracker per tag（回数の平均は一次会のみで算出）
   const cumulative = {}; // tag -> { sum, monthCount }
   const monthlyAvgLookup = {}; // "monthKey|tag" -> value
 
   monthsAsc.forEach(monthKey => {
     Object.keys(monthsMap[monthKey]).forEach(tag => {
       const bucket = monthsMap[monthKey][tag];
-      const total = bucket.c1 + bucket.c2;
+      const ichijiCount = bucket.c1;
       if(!cumulative[tag]) cumulative[tag] = { sum:0, monthCount:0 };
-      cumulative[tag].sum += total;
+      cumulative[tag].sum += ichijiCount;
       cumulative[tag].monthCount += 1;
       monthlyAvgLookup[`${monthKey}|${tag}`] = cumulative[tag].sum / cumulative[tag].monthCount;
     });
   });
 
-  // cumulative overall-average tracker (across all months, for the 月合計 row)
+  // cumulative overall-average tracker (across all months, for the 月合計 row)（一次会のみ）
   let overallCumulative = { sum: 0, monthCount: 0 };
   const monthlyAvgTotalLookup = {}; // monthKey -> value
   monthsAsc.forEach(monthKey => {
     const t = monthTotals[monthKey];
-    overallCumulative.sum += (t.c1 + t.c2);
+    overallCumulative.sum += t.c1;
     overallCumulative.monthCount += 1;
     monthlyAvgTotalLookup[monthKey] = overallCumulative.sum / overallCumulative.monthCount;
   });
 
   const monthsDesc = monthsAsc.slice().reverse();
 
-  container.innerHTML = '';
   monthsDesc.forEach(monthKey => {
     const tagData = monthsMap[monthKey];
     const weeksInMonth = daysInMonth(monthKey) / 7;
     const tagNames = Object.keys(tagData).sort((a,b) => (tagData[b].c1+tagData[b].c2) - (tagData[a].c1+tagData[a].c2));
 
     const totals = monthTotals[monthKey];
-    const totalWeeklyAvg = ((totals.c1+totals.c2) / weeksInMonth).toFixed(1);
+    const totalWeeklyAvg = (totals.c1 / weeksInMonth).toFixed(1);
     const totalMonthlyAvg = monthlyAvgTotalLookup[monthKey].toFixed(1);
     const totalAvgCost = avgCostPerDay(totals.costDays);
     const totalAvgPc = avgParticipantCount(totals);
@@ -1647,8 +1813,7 @@ function renderSummary(){
 
     const rows = tagNames.map(tag => {
       const b = tagData[tag];
-      const total = b.c1 + b.c2;
-      const weeklyAvg = (total / weeksInMonth).toFixed(1);
+      const weeklyAvg = (b.c1 / weeksInMonth).toFixed(1);
       const monthlyAvg = monthlyAvgLookup[`${monthKey}|${tag}`].toFixed(1);
       const avgCost = avgCostPerDay(b.costDays);
       const avgPc = avgParticipantCount(b);
@@ -1678,8 +1843,8 @@ function renderSummary(){
               <th>合計費用</th>
               <th>平均費用<br>(1日あたり)</th>
               <th>平均参加人数</th>
-              <th>週平均<br>(当月内)</th>
-              <th>月平均<br>(累計)</th>
+              <th>週平均<br>(一次会のみ)</th>
+              <th>月平均<br>(一次会のみ・累計)</th>
             </tr>
           </thead>
           <tbody>${totalRow}${rows}</tbody>
