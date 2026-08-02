@@ -2074,7 +2074,7 @@ function getWeekBounds(offset){
 }
 
 function countEventsInRange(tag, startYMD, endYMD){
-  return events.filter(ev => ev.datetime && ev.datetime >= startYMD && ev.datetime <= endYMD && (ev.tags||[]).includes(tag)).length;
+  return events.filter(ev => ev.datetime && ev.datetime >= startYMD && ev.datetime <= endYMD && (ev.round || '一次会') === '一次会' && (ev.tags||[]).includes(tag)).length;
 }
 
 $('weekPrevBtn').onclick = () => { weekOffset -= 1; renderWeeklyReport(); };
