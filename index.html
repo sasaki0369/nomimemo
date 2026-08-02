@@ -693,8 +693,6 @@ let pendingSecret = false;
 
 let weeklySettings = null;
 let weekOffset = -1; // -1 = 前週（実際の今日を含む週の一つ前）
-let weeklyReportPlainText = '';
-let weeklyReportHtml = '';
 
 let secretModeActive = false;
 function visibleEvents(){
@@ -2107,63 +2105,33 @@ function renderWeeklyReport(){
 
   const cumYear = cumStart.slice(0,4);
   const cumMonth = Number(cumStart.slice(5,7));
-  const headerBold = '■前週の飲み';
-  const headerRest = `（[]内は${cumYear}.${cumMonth}からの累計、()内は今週の予定,【】内は${weeklySettings.year1}平均,${weeklySettings.year2}平均）`;
-  const header = headerBold + headerRest;
-  $('weeklyPreview').innerHTML = `<strong>${escapeHtml(headerBold)}</strong>${escapeHtml(headerRest)}\n${escapeHtml(lines.join('\n'))}`;
-
-  weeklyReportPlainText = [header, ...lines].join('\n');
-  weeklyReportHtml = `<div><strong>${escapeHtml(headerBold)}</strong>${escapeHtml(headerRest)}<br>${lines.map(escapeHtml).join('<br>')}</div>`;
-}
-
-async function copyRichText(html, plain){
-  if(navigator.clipboard && window.ClipboardItem){
-    const item = new ClipboardItem({
-      'text/plain': new Blob([plain], { type: 'text/plain' }),
-      'text/html': new Blob([html], { type: 'text/html' }),
-    });
-    await navigator.clipboard.write([item]);
-    return;
-  }
-  // フォールバック：contenteditable要素を選択してコピー（見出しの太字は保持される）
-  const el = document.createElement('div');
-  el.innerHTML = html;
-  el.style.position = 'fixed';
-  el.style.opacity = '0';
-  el.setAttribute('contenteditable', 'true');
-  document.body.appendChild(el);
-  const range = document.createRange();
-  range.selectNodeContents(el);
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
-  document.execCommand('copy');
-  sel.removeAllRanges();
-  el.remove();
+  const header = `■前週の飲み（[]内は${cumYear}.${cumMonth}からの累計、()内は今週の予定,【】内は${weeklySettings.year1}平均,${weeklySettings.year2}平均）`;
+  $('weeklyPreview').textContent = [header, ...lines].join('\n');
 }
 
 $('copyWeeklyBtn').addEventListener('click', async () => {
+  const text = $('weeklyPreview').textContent;
   const btn = $('copyWeeklyBtn');
   const originalHtml = btn.innerHTML;
   try{
-    await copyRichText(weeklyReportHtml, weeklyReportPlainText);
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
     btn.textContent = '✅ コピーしました';
     setTimeout(() => { btn.innerHTML = originalHtml; }, 1600);
   }catch(e){
     console.error(e);
-    try{
-      // さらにフォールバック：プレーンテキストのみコピー
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        await navigator.clipboard.writeText(weeklyReportPlainText);
-        btn.textContent = '✅ コピーしました（書式なし）';
-        setTimeout(() => { btn.innerHTML = originalHtml; }, 1600);
-      } else {
-        throw e;
-      }
-    }catch(e2){
-      console.error(e2);
-      alert('コピーに失敗しました。プレビューのテキストを手動で選択してコピーしてください。');
-    }
+    alert('コピーに失敗しました。プレビューのテキストを手動で選択してコピーしてください。');
   }
 });
 
