@@ -96,6 +96,20 @@
     margin-bottom: 20px;
   }
   .toolbar-top{ display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;}
+
+  .search-row{
+    position:relative; margin-top:12px; display:flex; align-items:center;
+  }
+  .search-row .search-icon{ position:absolute; left:12px; color: var(--text-muted); pointer-events:none; }
+  .search-row input{
+    width:100%; border:1px solid var(--border-strong); border-radius:999px;
+    padding:9px 34px 9px 34px; font-size:13px; background:#fff; color: var(--text-dark); font-family:inherit;
+  }
+  .search-row #searchClearBtn{
+    position:absolute; right:8px; background: var(--tag-bg); border:none; border-radius:50%;
+    width:20px; height:20px; font-size:11px; color: var(--text-muted); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
   .btn-primary{
     background: var(--accent); color:#fffdf7; border:none; border-radius: 999px;
     padding: 10px 20px; font-size:14px; font-weight:600; cursor:pointer;
@@ -396,6 +410,11 @@
         </button>
         <span class="hint" id="filterHint">タグをタップして絞り込み</span>
       </div>
+      <div class="search-row">
+        <svg class="icon search-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="text" id="searchInput" placeholder="タイトル・店名・参加者・目的・メモで検索">
+        <button type="button" id="searchClearBtn" style="display:none;">✕</button>
+      </div>
       <div class="filter-row" id="filterTags"></div>
     </div>
 
@@ -681,6 +700,7 @@ const FIREBASE_CONFIG = {
 let events = [];
 let customTags = [];
 let activeFilters = new Set();
+let searchQuery = '';
 
 let editingId = null;
 let pendingParticipants = [];
@@ -1041,6 +1061,15 @@ function avgRating(ev){
   return (vals.reduce((a,b)=>a+b,0) / vals.length).toFixed(1);
 }
 
+function matchesSearch(ev, q){
+  if(!q) return true;
+  const haystack = [
+    ev.title, ev.shop, ev.address, ev.purpose, ev.notes,
+    ...(ev.participants || []), ...(ev.tags || [])
+  ].filter(Boolean).join(' ').toLowerCase();
+  return haystack.includes(q);
+}
+
 function renderEntryList(){
   const list = $('entryList');
   const visible = visibleEvents();
@@ -1048,12 +1077,18 @@ function renderEntryList(){
   if(activeFilters.size){
     filtered = filtered.filter(ev => (ev.tags||[]).some(t => activeFilters.has(t)));
   }
+  if(searchQuery){
+    filtered = filtered.filter(ev => matchesSearch(ev, searchQuery));
+  }
   filtered.sort((a,b) => new Date(b.datetime||0) - new Date(a.datetime||0));
 
   if(!filtered.length){
+    const emptyMsg = (visible.length && (activeFilters.size || searchQuery))
+      ? 'この条件に合う記録はありません'
+      : 'まだ記録がありません。最初の一件を追加しましょう';
     list.innerHTML = `<div class="empty-state">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2h5l1 4H5l1-4z"/><path d="M5 6h7l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6z"/></svg>
-      <div>${visible.length ? 'この条件に合う記録はありません' : 'まだ記録がありません。最初の一件を追加しましょう'}</div>
+      <div>${emptyMsg}</div>
     </div>`;
     return;
   }
@@ -1233,6 +1268,18 @@ function closeModal(){
 }
 
 $('addBtn').onclick = () => openModal(null);
+
+$('searchInput').addEventListener('input', (e) => {
+  searchQuery = e.target.value.trim().toLowerCase();
+  $('searchClearBtn').style.display = searchQuery ? 'flex' : 'none';
+  renderEntryList();
+});
+$('searchClearBtn').onclick = () => {
+  $('searchInput').value = '';
+  searchQuery = '';
+  $('searchClearBtn').style.display = 'none';
+  renderEntryList();
+};
 $('closeModalBtn').onclick = closeModal;
 $('modalOverlay').onclick = (e) => { if(e.target === $('modalOverlay')) closeModal(); };
 
