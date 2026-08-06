@@ -176,6 +176,7 @@
   }
   .entertain-badge.guest{ background: var(--accent2-soft); color: var(--accent2); }
   .entertain-badge.treat{ background: var(--tag-bg); color: var(--text-dark); }
+  .entertain-badge.organizer{ background: #dcd6f5; color: #5b4fa8; }
 
   .checkbox-label{
     display:inline-flex; align-items:center; gap:6px; font-size:13px; color: var(--text-dark); cursor:pointer;
@@ -463,6 +464,7 @@
           <tr><td>entertain_host</td><td>交際費として支払った場合は1</td></tr>
           <tr><td>entertain_guest</td><td>接待を受けた場合は1</td></tr>
           <tr><td>entertain_treat</td><td>奢った場合は1</td></tr>
+          <tr><td>entertain_organizer</td><td>運営側の場合は1</td></tr>
           <tr><td>secret</td><td>シークレット記録の場合は1</td></tr>
           <tr><td>rating_food / rating_drink / rating_cospa / rating_quiet / rating_mood</td><td>評価（1〜5の数値）</td></tr>
           <tr><td>notes</td><td>メモ</td></tr>
@@ -557,6 +559,9 @@
           </label>
           <label class="checkbox-label">
             <input type="checkbox" id="f-entertain-treat"> 奢り
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="f-entertain-organizer"> 運営側
           </label>
         </div>
       </div>
@@ -1103,7 +1108,7 @@ function renderEntryList(){
     const tagsHtml = (ev.tags||[]).map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join('');
     const round = ev.round || '一次会';
     const roundBadge = `<span class="round-badge${round === '二次会' ? ' r2' : ''}">${round}</span>`;
-    const entertainBadges = `${ev.entertainHost ? '<span class="entertain-badge">交際費</span>' : ''}${ev.entertainGuest ? '<span class="entertain-badge guest">接待受</span>' : ''}${ev.entertainTreat ? '<span class="entertain-badge treat">奢り</span>' : ''}`;
+    const entertainBadges = `${ev.entertainHost ? '<span class="entertain-badge">交際費</span>' : ''}${ev.entertainGuest ? '<span class="entertain-badge guest">接待受</span>' : ''}${ev.entertainTreat ? '<span class="entertain-badge treat">奢り</span>' : ''}${ev.entertainOrganizer ? '<span class="entertain-badge organizer">運営側</span>' : ''}`;
     const secretBadge = ev.secret ? '<span class="secret-flag-badge">🔒 シークレット</span>' : '';
     card.innerHTML = `
       ${thumb}
@@ -1167,6 +1172,7 @@ function resetForm(){
   $('f-entertain-host').checked = false;
   $('f-entertain-guest').checked = false;
   $('f-entertain-treat').checked = false;
+  $('f-entertain-organizer').checked = false;
   pendingParticipants = [];
   pendingTags = new Set();
   pendingPhotos = [];
@@ -1239,6 +1245,7 @@ function openModal(id){
     $('f-entertain-host').checked = !!ev.entertainHost;
     $('f-entertain-guest').checked = !!ev.entertainGuest;
     $('f-entertain-treat').checked = !!ev.entertainTreat;
+    $('f-entertain-organizer').checked = !!ev.entertainOrganizer;
     pendingSecret = !!ev.secret;
     renderSecretToggle();
     pendingParticipants = (ev.participants||[]).slice();
@@ -1305,6 +1312,7 @@ $('saveBtn').onclick = async () => {
     entertainHost: $('f-entertain-host').checked,
     entertainGuest: $('f-entertain-guest').checked,
     entertainTreat: $('f-entertain-treat').checked,
+    entertainOrganizer: $('f-entertain-organizer').checked,
     secret: pendingSecret,
   };
   // persist any brand-new custom tags
@@ -1951,7 +1959,7 @@ $('importInput').addEventListener('change', (e) => {
 
 /* ---- CSV export / import ---- */
 
-const CSV_COLUMNS = ['id','title','date','round','shop','address','lat','lng','participant_count','participants','purpose','tags','cost','entertain_host','entertain_guest','entertain_treat','secret','rating_food','rating_drink','rating_cospa','rating_quiet','rating_mood','notes'];
+const CSV_COLUMNS = ['id','title','date','round','shop','address','lat','lng','participant_count','participants','purpose','tags','cost','entertain_host','entertain_guest','entertain_treat','entertain_organizer','secret','rating_food','rating_drink','rating_cospa','rating_quiet','rating_mood','notes'];
 
 function csvEscape(field){
   const s = field == null ? '' : String(field);
@@ -1971,7 +1979,7 @@ function eventsToCsv(list){
       ev.participantCount != null ? ev.participantCount : '',
       (ev.participants || []).join('｜'), ev.purpose || '', (ev.tags || []).join('｜'),
       ev.cost != null ? ev.cost : '',
-      ev.entertainHost ? '1' : '', ev.entertainGuest ? '1' : '', ev.entertainTreat ? '1' : '',
+      ev.entertainHost ? '1' : '', ev.entertainGuest ? '1' : '', ev.entertainTreat ? '1' : '', ev.entertainOrganizer ? '1' : '',
       ev.secret ? '1' : '',
       r.food || '', r.drink || '', r.cospa || '', r.quiet || '', r.mood || '',
       ev.notes || '',
@@ -2038,6 +2046,7 @@ function csvRowsToEvents(rows){
       entertainHost: ['1','true','TRUE','はい'].includes(get('entertain_host')),
       entertainGuest: ['1','true','TRUE','はい'].includes(get('entertain_guest')),
       entertainTreat: ['1','true','TRUE','はい'].includes(get('entertain_treat')),
+      entertainOrganizer: ['1','true','TRUE','はい'].includes(get('entertain_organizer')),
       secret: ['1','true','TRUE','はい'].includes(get('secret')),
       ratings: {
         food: Number(get('rating_food')) || 0,
