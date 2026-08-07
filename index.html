@@ -819,7 +819,7 @@ function initStorage(){
   if(configured){
     try{
       firebase.initializeApp(FIREBASE_CONFIG);
-      fbRoot = firebase.database().ref('nomi-memo');
+      fbRoot = firebase.database().ref('nomiMemo');
       useFirebase = true;
       let authReady = false;
       firebase.auth().onAuthStateChanged((user) => {
