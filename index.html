@@ -799,7 +799,7 @@ function attachFirebaseListeners(){
     if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
   }, (err) => {
     console.error(err);
-    showFbBanner('Firebaseからの読み込みに失敗しました。Firebase設定やセキュリティルールをご確認ください。', true);
+    showFbBanner('Firebaseからの読み込みに失敗しました（'+(err && err.code ? err.code : err)+'）。Realtime Databaseのセキュリティルールをご確認ください。', true);
   });
   fbRoot.child('tags').on('value', (snap) => {
     customTags = snap.val() || [];
@@ -819,7 +819,7 @@ function initStorage(){
   if(configured){
     try{
       firebase.initializeApp(FIREBASE_CONFIG);
-      fbRoot = firebase.database().ref('nomiMemo');
+      fbRoot = firebase.database().ref('nomi-memo');
       useFirebase = true;
       let authReady = false;
       firebase.auth().onAuthStateChanged((user) => {
