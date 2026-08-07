@@ -18,6 +18,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
 <style>
   :root{
@@ -787,6 +788,32 @@ function showFbBanner(msg, isError){
   b.classList.toggle('error', !!isError);
 }
 
+function attachFirebaseListeners(){
+  fbRoot.child('events').on('value', (snap) => {
+    const val = snap.val() || {};
+    events = Object.values(val);
+    maybeInsertSampleData();
+    renderFilterTags();
+    renderEntryList();
+    renderStatsDuo();
+    if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
+  }, (err) => {
+    console.error(err);
+    showFbBanner('Firebaseからの読み込みに失敗しました。Firebase設定やセキュリティルールをご確認ください。', true);
+  });
+  fbRoot.child('tags').on('value', (snap) => {
+    customTags = snap.val() || [];
+    renderFilterTags();
+  });
+  fbRoot.child('weeklySettings').on('value', (snap) => {
+    const val = snap.val();
+    weeklySettings = val || defaultWeeklySettings();
+    ensureSettingsShape();
+    renderWeeklySettingsUI();
+    renderWeeklyReport();
+  });
+}
+
 function initStorage(){
   const configured = FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY';
   if(configured){
@@ -794,28 +821,19 @@ function initStorage(){
       firebase.initializeApp(FIREBASE_CONFIG);
       fbRoot = firebase.database().ref('nomiMemo');
       useFirebase = true;
-      fbRoot.child('events').on('value', (snap) => {
-        const val = snap.val() || {};
-        events = Object.values(val);
-        maybeInsertSampleData();
-        renderFilterTags();
-        renderEntryList();
-        renderStatsDuo();
-  if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
-      }, (err) => {
+      let authReady = false;
+      firebase.auth().onAuthStateChanged((user) => {
+        if(user && !authReady){
+          authReady = true;
+          attachFirebaseListeners();
+        }
+      });
+      firebase.auth().signInAnonymously().catch((err) => {
         console.error(err);
-        showFbBanner('Firebaseからの読み込みに失敗しました。Firebase設定やセキュリティルールをご確認ください。', true);
-      });
-      fbRoot.child('tags').on('value', (snap) => {
-        customTags = snap.val() || [];
-        renderFilterTags();
-      });
-      fbRoot.child('weeklySettings').on('value', (snap) => {
-        const val = snap.val();
-        weeklySettings = val || defaultWeeklySettings();
-        ensureSettingsShape();
-        renderWeeklySettingsUI();
-        renderWeeklyReport();
+        useFirebase = false;
+        showFbBanner('Firebase認証に失敗しました（'+(err && err.code ? err.code : err)+'）。Firebase Console → Authentication → Sign-in method で「匿名」が有効になっているかご確認ください。このデバイスのみにデータが保存されています。', true);
+        loadLocal();
+        loadWeeklySettingsLocal();
       });
     }catch(e){
       console.error(e);
