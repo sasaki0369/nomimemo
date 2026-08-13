@@ -363,6 +363,14 @@
 </style>
 </head>
 <body>
+<div id="loginGate" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--bg-card,#fffdf7);border-radius:16px;max-width:340px;width:88%;padding:36px 24px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.2);">
+    <h3 style="margin:0 0 6px;">飲みメモ</h3>
+    <p style="font-size:12.5px;color:#7a7161;margin:0 0 24px;line-height:1.7;">ご本人のGoogleアカウントでログインしてください</p>
+    <button type="button" id="googleLoginBtn" style="width:100%;padding:12px;font-size:14px;border:none;border-radius:6px;background:var(--accent,#c1594a);color:#fff;cursor:pointer;">Googleでログイン</button>
+    <p id="loginError" style="font-size:11.5px;color:var(--accent,#c1594a);margin:14px 0 0;line-height:1.6;"></p>
+  </div>
+</div>
 <div class="app">
   <header class="app-header">
     <div>
@@ -799,7 +807,7 @@ function attachFirebaseListeners(){
     if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
   }, (err) => {
     console.error(err);
-    showFbBanner('Firebaseからの読み込みに失敗しました（'+(err && err.code ? err.code : err)+'）。Realtime Databaseのセキュリティルールをご確認ください。', true);
+    showFbBanner('Firebaseからの読み込みに失敗しました。Firebase設定やセキュリティルールをご確認ください。', true);
   });
   fbRoot.child('tags').on('value', (snap) => {
     customTags = snap.val() || [];
@@ -822,18 +830,38 @@ function initStorage(){
       fbRoot = firebase.database().ref('nomiMemo');
       useFirebase = true;
       let authReady = false;
+      const ALLOWED_EMAIL = 'sasaki0369@gmail.com';
       firebase.auth().onAuthStateChanged((user) => {
-        if(user && !authReady){
-          authReady = true;
-          attachFirebaseListeners();
+        if(user && user.email !== ALLOWED_EMAIL){
+          firebase.auth().signOut();
+          document.getElementById('loginError').textContent = 'このアプリは指定されたアカウントのみ利用できます。';
+          return;
+        }
+        if(user){
+          document.getElementById('loginGate').style.display = 'none';
+          if(!authReady){
+            authReady = true;
+            attachFirebaseListeners();
+          }
+        }else{
+          document.getElementById('loginGate').style.display = 'flex';
         }
       });
-      firebase.auth().signInAnonymously().catch((err) => {
+      firebase.auth().getRedirectResult().catch((err) => {
         console.error(err);
-        useFirebase = false;
-        showFbBanner('Firebase認証に失敗しました（'+(err && err.code ? err.code : err)+'）。Firebase Console → Authentication → Sign-in method で「匿名」が有効になっているかご確認ください。このデバイスのみにデータが保存されています。', true);
-        loadLocal();
-        loadWeeklySettingsLocal();
+        document.getElementById('loginError').textContent = 'ログインに失敗しました（'+(err && err.code ? err.code : err)+'）';
+      });
+      document.getElementById('googleLoginBtn').addEventListener('click', () => {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        document.getElementById('loginError').textContent = '';
+        firebase.auth().signInWithPopup(provider).catch((err) => {
+          if(err && (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request' || err.code === 'auth/operation-not-supported-in-this-environment')){
+            firebase.auth().signInWithRedirect(provider);
+          }else{
+            console.error(err);
+            document.getElementById('loginError').textContent = 'ログインに失敗しました（'+(err && err.code ? err.code : err)+'）';
+          }
+        });
       });
     }catch(e){
       console.error(e);
