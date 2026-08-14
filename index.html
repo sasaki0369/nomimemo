@@ -166,6 +166,13 @@
   .entry-meta{ font-size:12px; color: var(--text-muted); display:flex; gap:14px; flex-wrap:wrap; }
   .entry-meta span{ display:inline-flex; align-items:center; gap:4px; }
 
+  .note-link-badge{
+    display:inline-flex; align-items:center; gap:4px; font-size:12px; color: var(--accent2);
+    text-decoration:none; background: var(--accent2-soft); border-radius:999px; padding:3px 10px;
+  }
+  .note-link-badge:hover{ text-decoration:underline; }
+  .note-links-preview{ margin-top:8px; display:flex; flex-wrap:wrap; gap:6px; }
+
   .round-badge{
     font-size:11px; font-weight:700; border-radius:999px; padding:3px 10px;
     background: var(--tag-bg); color: var(--text-dark);
@@ -363,14 +370,6 @@
 </style>
 </head>
 <body>
-<div id="loginGate" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:var(--bg-card,#fffdf7);border-radius:16px;max-width:340px;width:88%;padding:36px 24px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.2);">
-    <h3 style="margin:0 0 6px;">飲みメモ</h3>
-    <p style="font-size:12.5px;color:#7a7161;margin:0 0 24px;line-height:1.7;">ご本人のGoogleアカウントでログインしてください</p>
-    <button type="button" id="googleLoginBtn" style="width:100%;padding:12px;font-size:14px;border:none;border-radius:6px;background:var(--accent,#c1594a);color:#fff;cursor:pointer;">Googleでログイン</button>
-    <p id="loginError" style="font-size:11.5px;color:var(--accent,#c1594a);margin:14px 0 0;line-height:1.6;"></p>
-  </div>
-</div>
 <div class="app">
   <header class="app-header">
     <div>
@@ -715,6 +714,7 @@
       <div class="field">
         <label class="field-label">メモ</label>
         <textarea id="f-notes" placeholder="話した内容、感想、次に活かしたいことなど"></textarea>
+        <div class="note-links-preview" id="noteLinksPreview"></div>
       </div>
 
     </div>
@@ -807,7 +807,7 @@ function attachFirebaseListeners(){
     if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
   }, (err) => {
     console.error(err);
-    showFbBanner('Firebaseからの読み込みに失敗しました。Firebase設定やセキュリティルールをご確認ください。', true);
+    showFbBanner('Firebaseからの読み込みに失敗しました（'+(err && err.code ? err.code : err)+'）。Realtime Databaseのセキュリティルールをご確認ください。', true);
   });
   fbRoot.child('tags').on('value', (snap) => {
     customTags = snap.val() || [];
@@ -830,38 +830,18 @@ function initStorage(){
       fbRoot = firebase.database().ref('nomiMemo');
       useFirebase = true;
       let authReady = false;
-      const ALLOWED_EMAIL = 'sasaki0369@gmail.com';
       firebase.auth().onAuthStateChanged((user) => {
-        if(user && user.email !== ALLOWED_EMAIL){
-          firebase.auth().signOut();
-          document.getElementById('loginError').textContent = 'このアプリは指定されたアカウントのみ利用できます。';
-          return;
-        }
-        if(user){
-          document.getElementById('loginGate').style.display = 'none';
-          if(!authReady){
-            authReady = true;
-            attachFirebaseListeners();
-          }
-        }else{
-          document.getElementById('loginGate').style.display = 'flex';
+        if(user && !authReady){
+          authReady = true;
+          attachFirebaseListeners();
         }
       });
-      firebase.auth().getRedirectResult().catch((err) => {
+      firebase.auth().signInAnonymously().catch((err) => {
         console.error(err);
-        document.getElementById('loginError').textContent = 'ログインに失敗しました（'+(err && err.code ? err.code : err)+'）';
-      });
-      document.getElementById('googleLoginBtn').addEventListener('click', () => {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        document.getElementById('loginError').textContent = '';
-        firebase.auth().signInWithPopup(provider).catch((err) => {
-          if(err && (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request' || err.code === 'auth/operation-not-supported-in-this-environment')){
-            firebase.auth().signInWithRedirect(provider);
-          }else{
-            console.error(err);
-            document.getElementById('loginError').textContent = 'ログインに失敗しました（'+(err && err.code ? err.code : err)+'）';
-          }
-        });
+        useFirebase = false;
+        showFbBanner('Firebase認証に失敗しました（'+(err && err.code ? err.code : err)+'）。Firebase Console → Authentication → Sign-in method で「匿名」が有効になっているかご確認ください。このデバイスのみにデータが保存されています。', true);
+        loadLocal();
+        loadWeeklySettingsLocal();
       });
     }catch(e){
       console.error(e);
@@ -1145,6 +1125,26 @@ function formatDate(dtStr){
   return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}（${w}）`;
 }
 
+function extractUrls(text){
+  if(!text) return [];
+  const matches = text.match(/(https?:\/\/[^\s<>"'）】｜]+)/g) || [];
+  return Array.from(new Set(matches));
+}
+
+function urlLabel(url){
+  try{ return new URL(url).hostname.replace(/^www\./,''); }
+  catch(e){ return url.length > 28 ? url.slice(0,28) + '…' : url; }
+}
+
+function noteLinkBadgesHtml(notes, opts){
+  const urls = extractUrls(notes);
+  if(!urls.length) return '';
+  const stop = opts && opts.stopPropagation ? ' onclick="event.stopPropagation()"' : '';
+  return urls.map(u =>
+    `<a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer" class="note-link-badge"${stop}>🔗 ${escapeHtml(urlLabel(u))}</a>`
+  ).join('');
+}
+
 function avgRating(ev){
   const r = ev.ratings;
   if(!r) return null;
@@ -1213,6 +1213,7 @@ function renderEntryList(){
           ${avgRating(ev) ? `<span>⭐ ${avgRating(ev)}</span>` : ''}
           ${(ev.drinks && ev.drinks.length) ? `<span>🍶 ${ev.drinks.reduce((s,d)=>s+d.count,0)}杯</span>` : ''}
           ${(ev.photos||[]).length ? `<span>📷 ${ev.photos.length}枚</span>` : ''}
+          ${noteLinkBadgesHtml(ev.notes, { stopPropagation: true })}
         </div>
       </div>
     `;
@@ -1253,6 +1254,7 @@ function resetForm(){
   $('f-address').value = '';
   $('f-purpose').value = '';
   $('f-notes').value = '';
+  $('noteLinksPreview').innerHTML = '';
   $('f-cost').value = '';
   $('f-participant-count').value = '';
   $('f-participant-input').value = '';
@@ -1363,6 +1365,7 @@ function openModal(id){
     $('f-address').value = ev.address || '';
     $('f-purpose').value = ev.purpose || '';
     $('f-notes').value = ev.notes || '';
+    $('noteLinksPreview').innerHTML = noteLinkBadgesHtml(ev.notes);
     $('f-cost').value = (ev.cost != null && ev.cost !== '') ? ev.cost : '';
     $('f-participant-count').value = (ev.participantCount != null && ev.participantCount !== '') ? ev.participantCount : '';
     $('f-entertain-host').checked = !!ev.entertainHost;
@@ -1478,6 +1481,9 @@ function updateMapsLink(){
 }
 
 $('f-address').addEventListener('input', updateMapsLink);
+$('f-notes').addEventListener('input', () => {
+  $('noteLinksPreview').innerHTML = noteLinkBadgesHtml($('f-notes').value);
+});
 
 function showMap(lat, lng){
   const box = $('mapBox');
@@ -1851,17 +1857,17 @@ function renderCrosstabTable(title, keysDesc, labelFn, groups, usedTags){
     }).join('');
     const rowTotal = g.ids.size;
     grandTotal += rowTotal;
-    return `<tr><td class="summary-tag-name">${escapeHtml(labelFn(key))}</td>${cells}<td style="font-weight:700;">${rowTotal}</td></tr>`;
+    return `<tr><td class="summary-tag-name">${escapeHtml(labelFn(key))}</td><td style="font-weight:700;">${rowTotal}</td>${cells}</tr>`;
   }).join('');
   const totalCells = usedTags.map(tag => `<td style="font-weight:700;">${colTotals[tag] || '−'}</td>`).join('');
-  const totalRow = `<tr class="summary-total-row"><td class="summary-tag-name">合計</td>${totalCells}<td>${grandTotal}</td></tr>`;
+  const totalRow = `<tr class="summary-total-row"><td class="summary-tag-name">合計</td><td>${grandTotal}</td>${totalCells}</tr>`;
   const headerCells = usedTags.map(t => `<th>${escapeHtml(t)}</th>`).join('');
   return `
     <div class="summary-month">
       <h3>${title}</h3>
       <div class="summary-scroll">
         <table class="summary-table">
-          <thead><tr><th></th>${headerCells}<th>合計</th></tr></thead>
+          <thead><tr><th></th><th>合計</th>${headerCells}</tr></thead>
           <tbody>${bodyRows}${totalRow}</tbody>
         </table>
       </div>
