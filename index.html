@@ -988,7 +988,7 @@ async function flushPendingSync(){
   for(const item of queue){
     try{
       if(item.type === 'event'){
-        await withTimeout(fbRoot.child('events').child(item.key).set(item.payload), 8000);
+        await withTimeout(fbRoot.child('events').child(item.key).set(item.payload), timeoutForPayload(item.payload));
       } else if(item.type === 'eventDelete'){
         await withTimeout(fbRoot.child('events').child(item.key).remove(), 8000);
       } else if(item.type === 'tags'){
@@ -1006,6 +1006,15 @@ async function flushPendingSync(){
 window.addEventListener('online', () => { flushPendingSync(); });
 setInterval(() => { if(pendingSync.length) flushPendingSync(); }, 20000);
 
+function timeoutForPayload(obj){
+  // 写真添付などでペイロードが大きい場合、アップロードに時間がかかっても
+  // 通信環境のせいで失敗したと誤判定しないよう、サイズに応じて猶予を延ばす
+  let bytes = 0;
+  try{ bytes = JSON.stringify(obj).length; }catch(e){ bytes = 0; }
+  const mb = bytes / (1024 * 1024);
+  return Math.min(8000 + Math.round(mb * 6000), 45000);
+}
+
 async function upsertEventRemote(ev){
   // 通信状況に関わらず、まずこの端末に即時保存（データ消失防止）
   const idx = events.findIndex(e2 => e2.id === ev.id);
@@ -1016,7 +1025,7 @@ async function upsertEventRemote(ev){
 
   if(useFirebase){
     try{
-      await withTimeout(fbRoot.child('events').child(ev.id).set(ev), 8000);
+      await withTimeout(fbRoot.child('events').child(ev.id).set(ev), timeoutForPayload(ev));
       unqueueSync('event', ev.id);
     }catch(e){
       console.error(e);
@@ -1833,12 +1842,16 @@ $('photoInput').addEventListener('change', async (e) => {
   const files = Array.from(e.target.files);
   for(const file of files){
     try{
-      const resized = await resizeImageFile(file, 1000, 0.75);
+      const resized = await resizeImageFile(file, 900, 0.65);
       pendingPhotos.push(resized);
     }catch(err){ console.error(err); }
   }
   renderPhotoGrid();
   e.target.value = '';
+  const totalBytes = pendingPhotos.reduce((s,p) => s + p.length, 0);
+  if(totalBytes > 3 * 1024 * 1024){
+    alert('現地写真の合計サイズが大きくなっています（保存や同期に時間がかかったり失敗しやすくなります）。枚数を減らすことをおすすめします。');
+  }
 });
 
 function openLightbox(src){
