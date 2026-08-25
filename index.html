@@ -355,6 +355,7 @@
   }
   .fb-banner.show{ display:block; }
   .fb-banner.error{ background: var(--accent-soft); color: var(--accent); }
+  .sync-banner.show{ background: #fdeecb; color: #8a6a1f; }
 
   .lightbox{
     display:none; position:fixed; inset:0; background: rgba(0,0,0,0.8); z-index:200;
@@ -408,6 +409,7 @@
   </header>
 
   <div class="fb-banner" id="fbBanner"></div>
+  <div class="fb-banner sync-banner" id="syncBanner"></div>
 
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="list">記録</button>
@@ -815,7 +817,7 @@ function attachFirebaseListeners(){
     if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
   }, (err) => {
     console.error(err);
-    showFbBanner('Firebaseからの読み込みに失敗しました。Firebase設定やセキュリティルールをご確認ください。', true);
+    showFbBanner('Firebaseからの読み込みに失敗しました（'+(err && err.code ? err.code : err)+'）。Realtime Databaseのセキュリティルールをご確認ください。', true);
   });
   fbRoot.child('tags').on('value', (snap) => {
     customTags = snap.val() || [];
@@ -831,6 +833,7 @@ function attachFirebaseListeners(){
 }
 
 function initStorage(){
+  loadPendingSync();
   const configured = FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY';
   if(configured){
     try{
@@ -850,6 +853,7 @@ function initStorage(){
           if(!authReady){
             authReady = true;
             attachFirebaseListeners();
+            flushPendingSync();
           }
         }else{
           document.getElementById('loginGate').style.display = 'flex';
@@ -911,11 +915,15 @@ function loadWeeklySettingsLocal(){
 }
 
 async function saveWeeklySettings(){
+  localStorage.setItem('nomi-weekly-settings', JSON.stringify(weeklySettings));
   if(useFirebase){
-    try{ await fbRoot.child('weeklySettings').set(weeklySettings); }
-    catch(e){ console.error(e); }
-  } else {
-    localStorage.setItem('nomi-weekly-settings', JSON.stringify(weeklySettings));
+    try{
+      await withTimeout(fbRoot.child('weeklySettings').set(weeklySettings), 8000);
+      unqueueSync('weeklySettings', 'all');
+    }catch(e){
+      console.error(e);
+      queueSync('weeklySettings', 'all', weeklySettings);
+    }
   }
 }
 
@@ -932,50 +940,132 @@ function loadLocal(){
 function saveLocalEvents(){ localStorage.setItem('nomi-events', JSON.stringify(events)); }
 function saveLocalTags(){ localStorage.setItem('nomi-tags', JSON.stringify(customTags)); }
 
-async function upsertEventRemote(ev){
-  if(useFirebase){
-    try{ await fbRoot.child('events').child(ev.id).set(ev); }
-    catch(e){ console.error(e); alert('保存に失敗しました。通信状況やFirebase設定をご確認ください。'); }
+/* ---- Pending sync queue (通信環境が悪いときのオフライン耐性) ---- */
+
+let pendingSync = [];
+
+function loadPendingSync(){
+  try{ pendingSync = JSON.parse(localStorage.getItem('nomi-pending-sync') || '[]'); }
+  catch(e){ pendingSync = []; }
+  renderSyncBanner();
+}
+function savePendingSyncToStorage(){
+  localStorage.setItem('nomi-pending-sync', JSON.stringify(pendingSync));
+  renderSyncBanner();
+}
+function queueSync(type, key, payload){
+  pendingSync = pendingSync.filter(p => !(p.type === type && p.key === key));
+  // deleting supersedes any pending upsert for the same record
+  if(type === 'eventDelete') pendingSync = pendingSync.filter(p => !(p.type === 'event' && p.key === key));
+  pendingSync.push({ type, key, payload, ts: Date.now() });
+  savePendingSyncToStorage();
+}
+function unqueueSync(type, key){
+  const before = pendingSync.length;
+  pendingSync = pendingSync.filter(p => !(p.type === type && p.key === key));
+  if(pendingSync.length !== before) savePendingSyncToStorage();
+}
+function renderSyncBanner(){
+  const el = $('syncBanner');
+  if(!el) return;
+  if(pendingSync.length){
+    el.textContent = `⏳ 未同期の変更が${pendingSync.length}件あります。オンラインになり次第、自動で同期します。`;
+    el.classList.add('show');
   } else {
-    const idx = events.findIndex(e2 => e2.id === ev.id);
-    if(idx >= 0) events[idx] = ev; else events.push(ev);
-    saveLocalEvents();
-    renderFilterTags(); renderEntryList(); renderStatsDuo();
+    el.classList.remove('show');
+  }
+}
+function withTimeout(promise, ms){
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ]);
+}
+async function flushPendingSync(){
+  if(!useFirebase || !fbRoot || !pendingSync.length) return;
+  if(typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  const queue = pendingSync.slice();
+  for(const item of queue){
+    try{
+      if(item.type === 'event'){
+        await withTimeout(fbRoot.child('events').child(item.key).set(item.payload), 8000);
+      } else if(item.type === 'eventDelete'){
+        await withTimeout(fbRoot.child('events').child(item.key).remove(), 8000);
+      } else if(item.type === 'tags'){
+        await withTimeout(fbRoot.child('tags').set(item.payload), 8000);
+      } else if(item.type === 'weeklySettings'){
+        await withTimeout(fbRoot.child('weeklySettings').set(item.payload), 8000);
+      }
+      unqueueSync(item.type, item.key);
+    }catch(e){
+      console.error('同期リトライに失敗しました', item.type, item.key, e);
+      break; // まだ繋がっていない可能性が高いので、今回はここで打ち切って次回に回す
+    }
+  }
+}
+window.addEventListener('online', () => { flushPendingSync(); });
+setInterval(() => { if(pendingSync.length) flushPendingSync(); }, 20000);
+
+async function upsertEventRemote(ev){
+  // 通信状況に関わらず、まずこの端末に即時保存（データ消失防止）
+  const idx = events.findIndex(e2 => e2.id === ev.id);
+  if(idx >= 0) events[idx] = ev; else events.push(ev);
+  saveLocalEvents();
+  renderFilterTags(); renderEntryList(); renderStatsDuo();
   if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
+
+  if(useFirebase){
+    try{
+      await withTimeout(fbRoot.child('events').child(ev.id).set(ev), 8000);
+      unqueueSync('event', ev.id);
+    }catch(e){
+      console.error(e);
+      queueSync('event', ev.id, ev);
+    }
   }
 }
 
 async function deleteEventRemote(id){
-  if(useFirebase){
-    try{ await fbRoot.child('events').child(id).remove(); }
-    catch(e){ console.error(e); alert('削除に失敗しました。通信状況をご確認ください。'); }
-  } else {
-    events = events.filter(e => e.id !== id);
-    saveLocalEvents();
-    renderFilterTags(); renderEntryList(); renderStatsDuo();
+  events = events.filter(e => e.id !== id);
+  saveLocalEvents();
+  renderFilterTags(); renderEntryList(); renderStatsDuo();
   if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
+
+  if(useFirebase){
+    try{
+      await withTimeout(fbRoot.child('events').child(id).remove(), 8000);
+      unqueueSync('eventDelete', id);
+    }catch(e){
+      console.error(e);
+      queueSync('eventDelete', id, null);
+    }
   }
 }
 
 async function saveTagsRemote(){
+  saveLocalTags();
   if(useFirebase){
-    try{ await fbRoot.child('tags').set(customTags); }
-    catch(e){ console.error(e); }
-  } else {
-    saveLocalTags();
-    renderFilterTags();
+    try{
+      await withTimeout(fbRoot.child('tags').set(customTags), 8000);
+      unqueueSync('tags', 'all');
+    }catch(e){
+      console.error(e);
+      queueSync('tags', 'all', customTags.slice());
+    }
   }
+  renderFilterTags();
 }
 
 async function clearAllRemote(){
-  if(useFirebase){
-    try{ await fbRoot.child('events').remove(); await fbRoot.child('tags').remove(); }
-    catch(e){ console.error(e); alert('削除に失敗しました。通信状況をご確認ください。'); }
-  } else {
-    events = []; customTags = [];
-    saveLocalEvents(); saveLocalTags();
-    renderFilterTags(); renderEntryList(); renderStatsDuo();
+  events = []; customTags = [];
+  saveLocalEvents(); saveLocalTags();
+  pendingSync = []; savePendingSyncToStorage();
+  renderFilterTags(); renderEntryList(); renderStatsDuo();
   if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
+
+  if(useFirebase){
+    try{ await withTimeout(fbRoot.child('events').remove(), 8000); await withTimeout(fbRoot.child('tags').remove(), 8000); }
+    catch(e){ console.error(e); alert('サーバー側のデータ削除に失敗しました（この端末のデータは削除済みです）。オンラインになってからもう一度「全データを消去」をお試しください。'); }
   }
 }
 
