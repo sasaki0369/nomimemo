@@ -1519,6 +1519,15 @@ function openModal(id){
   renderRatingGroup();
   renderDrinkChips();
   $('modalOverlay').classList.add('open');
+  const modalOverlayEl = $('modalOverlay');
+  const modalBodyEl = modalOverlayEl.querySelector('.modal-body');
+  modalOverlayEl.scrollTop = 0;
+  if(modalBodyEl) modalBodyEl.scrollTop = 0;
+  requestAnimationFrame(() => {
+    modalOverlayEl.scrollTop = 0;
+    if(modalBodyEl) modalBodyEl.scrollTop = 0;
+    if(!editingId){ const titleEl = $('f-title'); if(titleEl) titleEl.focus(); }
+  });
   if(pendingCoords){ setTimeout(() => { if(leafletMap) leafletMap.invalidateSize(); }, 150); }
 }
 
