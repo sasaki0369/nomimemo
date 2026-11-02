@@ -700,7 +700,7 @@
       <div class="field">
         <label class="field-label">
           <svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.6 12.6L12.6 20.6a2 2 0 0 1-2.8 0l-7-7a2 2 0 0 1 0-2.8l8-8A2 2 0 0 1 12.2 2H19a2 2 0 0 1 2 2v6.8a2 2 0 0 1-.4 1.8z"/><circle cx="7.5" cy="7.5" r="1.2"/></svg>
-          分類タグ
+          分類タグ <span style="color:#c0392b; font-size:12px;">（必須）</span>
         </label>
         <div class="filter-row" id="tagPicker"></div>
         <div class="row-inline" style="margin-top:8px;">
@@ -1555,6 +1555,12 @@ $('modalOverlay').onclick = (e) => { if(e.target === $('modalOverlay')) closeMod
 $('saveBtn').onclick = async () => {
   const title = $('f-title').value.trim();
   if(!title){ alert('タイトルを入力してください'); return; }
+  if(pendingTags.size === 0){
+    alert('分類タグを1つ以上選択してください');
+    const tp = $('tagPicker');
+    if(tp && tp.scrollIntoView) tp.scrollIntoView({block:'center'});
+    return;
+  }
   const ev = {
     id: editingId || ('ev_' + Date.now() + '_' + Math.random().toString(36).slice(2,7)),
     title,
