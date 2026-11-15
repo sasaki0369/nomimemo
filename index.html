@@ -14,8 +14,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#c1594a">
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://life--log-default-rtdb.asia-southeast1.firebasedatabase.app" crossorigin>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -810,6 +810,8 @@ function attachFirebaseListeners(){
   fbRoot.child('events').on('value', (snap) => {
     const val = snap.val() || {};
     events = Object.values(val);
+    try{ localStorage.setItem('nomi-events', JSON.stringify(events)); }
+    catch(e){ try{ localStorage.removeItem('nomi-events'); }catch(_){} }
     maybeInsertSampleData();
     renderFilterTags();
     renderEntryList();
@@ -821,15 +823,30 @@ function attachFirebaseListeners(){
   });
   fbRoot.child('tags').on('value', (snap) => {
     customTags = snap.val() || [];
+    try{ localStorage.setItem('nomi-tags', JSON.stringify(customTags)); }catch(e){}
     renderFilterTags();
   });
   fbRoot.child('weeklySettings').on('value', (snap) => {
     const val = snap.val();
     weeklySettings = val || defaultWeeklySettings();
     ensureSettingsShape();
+    try{ localStorage.setItem('nomi-weekly-settings', JSON.stringify(weeklySettings)); }catch(e){}
     renderWeeklySettingsUI();
     renderWeeklyReport();
   });
+}
+
+function preloadFromCache(){
+  try{
+    const ev = JSON.parse(localStorage.getItem('nomi-events') || 'null');
+    if(Array.isArray(ev) && ev.length){ events = ev; }
+    const tg = JSON.parse(localStorage.getItem('nomi-tags') || 'null');
+    if(Array.isArray(tg)){ customTags = tg; }
+  }catch(e){}
+  loadWeeklySettingsLocal();
+  renderFilterTags();
+  renderEntryList();
+  renderStatsDuo();
 }
 
 function initStorage(){
@@ -840,6 +857,7 @@ function initStorage(){
       firebase.initializeApp(FIREBASE_CONFIG);
       fbRoot = firebase.database().ref('nomiMemo');
       useFirebase = true;
+      preloadFromCache();
       let authReady = false;
       const ALLOWED_EMAIL = 'sasaki0369@gmail.com';
       firebase.auth().onAuthStateChanged((user) => {
@@ -937,7 +955,7 @@ function loadLocal(){
   if(weeklySettings && $('weeklyView').style.display !== 'none') renderWeeklyReport();
 }
 
-function saveLocalEvents(){ localStorage.setItem('nomi-events', JSON.stringify(events)); }
+function saveLocalEvents(){ try{ localStorage.setItem('nomi-events', JSON.stringify(events)); }catch(e){ console.warn('local cache full', e); } }
 function saveLocalTags(){ localStorage.setItem('nomi-tags', JSON.stringify(customTags)); }
 
 /* ---- Pending sync queue (通信環境が悪いときのオフライン耐性) ---- */
@@ -1625,10 +1643,35 @@ $('f-notes').addEventListener('input', () => {
   $('noteLinksPreview').innerHTML = noteLinkBadgesHtml($('f-notes').value);
 });
 
+let leafletLoading = null;
+function ensureLeaflet(){
+  if(typeof L !== 'undefined') return Promise.resolve();
+  if(leafletLoading) return leafletLoading;
+  leafletLoading = new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    sc.onload = () => resolve();
+    sc.onerror = () => { leafletLoading = null; reject(new Error('leaflet load failed')); };
+    document.head.appendChild(sc);
+  });
+  return leafletLoading;
+}
+
 function showMap(lat, lng){
   const box = $('mapBox');
   box.classList.add('open');
   $('mapHint').style.display = 'block';
+  $('mapHint').textContent = '地図をドラッグ、またはピンをドラッグして位置を補正できます';
+  if(typeof L === 'undefined'){
+    ensureLeaflet().then(() => showMap(lat, lng)).catch(() => {
+      $('mapHint').textContent = '地図を読み込めませんでした（通信環境をご確認ください）';
+    });
+    return;
+  }
   if(!leafletMap){
     leafletMap = L.map(box).setView([lat, lng], 17);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
