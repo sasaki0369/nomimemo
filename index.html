@@ -480,6 +480,7 @@
           <tr><td>purpose</td><td>目的</td></tr>
           <tr><td>tags</td><td>分類タグ（複数は「｜」区切り）</td></tr>
           <tr><td>cost</td><td>費用（円・数値）</td></tr>
+          <tr><td>stay_minutes</td><td>滞在時間（分・数値。例：2時間30分は150）</td></tr>
           <tr><td>entertain_host</td><td>交際費として支払った場合は1</td></tr>
           <tr><td>entertain_guest</td><td>接待を受けた場合は1</td></tr>
           <tr><td>entertain_treat</td><td>奢った場合は1</td></tr>
@@ -565,6 +566,14 @@
           <span class="tag-pill round-pill" data-round="一次会" id="round1Pill">一次会</span>
           <span class="tag-pill round-pill" data-round="二次会" id="round2Pill">二次会</span>
           <input type="number" id="f-cost" placeholder="費用（円）" inputmode="numeric" style="width:150px;">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">滞在時間</label>
+        <div class="row-inline">
+          <input type="number" id="f-stay-h" placeholder="0" inputmode="numeric" min="0" max="23" style="width:70px;"> 時間
+          <input type="number" id="f-stay-m" placeholder="0" inputmode="numeric" min="0" max="59" style="width:70px;"> 分
         </div>
       </div>
 
@@ -1260,6 +1269,12 @@ async function deleteTag(tagName){
   await refreshAllViews();
 }
 
+function formatStay(min){
+  min = Number(min) || 0;
+  const h = Math.floor(min / 60), m = min % 60;
+  return (h ? h + '時間' : '') + (m ? m + '分' : '') || '0分';
+}
+
 function formatDate(dtStr){
   if(!dtStr) return '日付未設定';
   const d = new Date(dtStr + 'T00:00:00');
@@ -1351,6 +1366,7 @@ function renderEntryList(){
         <div class="entry-tags">${tagsHtml}${entertainBadges}${secretBadge}</div>
         <div class="entry-meta">
           ${(ev.participantCount != null && ev.participantCount !== '') ? `<span>👥 ${ev.participantCount}名</span>` : ''}
+          ${ev.stayMinutes ? `<span>⏱ ${formatStay(ev.stayMinutes)}</span>` : ''}
           ${ev.purpose ? `<span>🎯 ${escapeHtml(ev.purpose)}</span>` : ''}
           ${(ev.cost != null && ev.cost !== '') ? `<span>💴 ¥${Number(ev.cost).toLocaleString()}</span>` : ''}
           ${avgRating(ev) ? `<span>⭐ ${avgRating(ev)}</span>` : ''}
@@ -1399,6 +1415,8 @@ function resetForm(){
   $('f-notes').value = '';
   $('noteLinksPreview').innerHTML = '';
   $('f-cost').value = '';
+  $('f-stay-h').value = '';
+  $('f-stay-m').value = '';
   $('f-participant-count').value = '';
   $('f-participant-input').value = '';
   $('f-newtag-input').value = '';
@@ -1511,6 +1529,10 @@ function openModal(id){
     $('noteLinksPreview').innerHTML = noteLinkBadgesHtml(ev.notes);
     $('f-cost').value = (ev.cost != null && ev.cost !== '') ? ev.cost : '';
     $('f-participant-count').value = (ev.participantCount != null && ev.participantCount !== '') ? ev.participantCount : '';
+    if(ev.stayMinutes != null && ev.stayMinutes !== ''){
+      $('f-stay-h').value = Math.floor(ev.stayMinutes / 60) || '';
+      $('f-stay-m').value = (ev.stayMinutes % 60) || '';
+    }
     $('f-entertain-host').checked = !!ev.entertainHost;
     $('f-entertain-guest').checked = !!ev.entertainGuest;
     $('f-entertain-treat').checked = !!ev.entertainTreat;
@@ -1594,6 +1616,11 @@ $('saveBtn').onclick = async () => {
     round: pendingRound,
     cost: $('f-cost').value ? Number($('f-cost').value) : null,
     participantCount: $('f-participant-count').value !== '' ? Number($('f-participant-count').value) : null,
+    stayMinutes: (() => {
+      const h = Number($('f-stay-h').value) || 0, m = Number($('f-stay-m').value) || 0;
+      const t = h * 60 + m;
+      return t > 0 ? t : null;
+    })(),
     ratings: Object.assign({}, pendingRatings),
     entertainHost: $('f-entertain-host').checked,
     entertainGuest: $('f-entertain-guest').checked,
@@ -2278,7 +2305,7 @@ $('importInput').addEventListener('change', (e) => {
 
 /* ---- CSV export / import ---- */
 
-const CSV_COLUMNS = ['id','title','date','round','shop','address','lat','lng','participant_count','participants','purpose','tags','cost','entertain_host','entertain_guest','entertain_treat','entertain_organizer','secret','drinks','rating_food','rating_drink','rating_cospa','rating_quiet','rating_mood','notes'];
+const CSV_COLUMNS = ['id','title','date','round','shop','address','lat','lng','participant_count','participants','purpose','tags','cost','stay_minutes','entertain_host','entertain_guest','entertain_treat','entertain_organizer','secret','drinks','rating_food','rating_drink','rating_cospa','rating_quiet','rating_mood','notes'];
 
 function csvEscape(field){
   const s = field == null ? '' : String(field);
@@ -2298,6 +2325,7 @@ function eventsToCsv(list){
       ev.participantCount != null ? ev.participantCount : '',
       (ev.participants || []).join('｜'), ev.purpose || '', (ev.tags || []).join('｜'),
       ev.cost != null ? ev.cost : '',
+      ev.stayMinutes != null ? ev.stayMinutes : '',
       ev.entertainHost ? '1' : '', ev.entertainGuest ? '1' : '', ev.entertainTreat ? '1' : '', ev.entertainOrganizer ? '1' : '',
       ev.secret ? '1' : '',
       (ev.drinks || []).map(d => `${d.type}:${d.count}`).join('｜'),
@@ -2357,6 +2385,7 @@ function csvRowsToEvents(rows){
       address: get('address'),
       coords: (lat && lng) ? { lat: Number(lat), lng: Number(lng) } : null,
       participantCount: get('participant_count') !== '' ? Number(get('participant_count')) : null,
+      stayMinutes: get('stay_minutes') !== '' && !isNaN(Number(get('stay_minutes'))) ? Number(get('stay_minutes')) : null,
       participants: get('participants') ? get('participants').split('｜').map(s => s.trim()).filter(Boolean) : [],
       purpose: get('purpose'),
       tags: get('tags') ? get('tags').split('｜').map(s => s.trim()).filter(Boolean) : [],
