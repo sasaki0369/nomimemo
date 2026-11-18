@@ -1590,7 +1590,7 @@ $('searchClearBtn').onclick = () => {
   renderEntryList();
 };
 $('closeModalBtn').onclick = closeModal;
-$('modalOverlay').onclick = (e) => { if(e.target === $('modalOverlay')) closeModal(); };
+// 入力中の誤消失を防ぐため、背景クリックでは閉じない（×ボタンまたは保存で閉じる）
 
 $('saveBtn').onclick = async () => {
   const title = $('f-title').value.trim();
